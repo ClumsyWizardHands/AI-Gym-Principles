@@ -24,6 +24,12 @@ from src.adapters import (
     AgentInterface, AgentDecision, TrainingScenario,
     OpenAIAdapter, AnthropicAdapter, LangChainAdapter, CustomAdapter
 )
+from src.api.websocket import (
+    notify_training_progress,
+    notify_principle_discovered,
+    notify_status_change,
+    notify_training_error
+)
 
 logger = structlog.get_logger()
 metrics = MetricsCollector()
@@ -441,8 +447,11 @@ class TrainingSessionManager:
             raise ValueError(f"Session {session_id} not found")
         
         try:
+            # Notify status change to running
+            old_status = session.status
             session.status = "running"
             session.updated_at = datetime.utcnow()
+            await notify_status_change(session_id, old_status, "running")
             
             # Core training loop
             for scenario_num in range(session.num_scenarios):
@@ -582,6 +591,13 @@ class TrainingSessionManager:
                 session.scenarios_completed += 1
                 session.update_progress()
                 
+                # Notify progress via WebSocket
+                await notify_training_progress(
+                    session_id,
+                    session.scenarios_completed,
+                    session.num_scenarios
+                )
+                
                 # Record metrics
                 metrics.observe(
                     "scenario_execution_time",
@@ -611,9 +627,25 @@ class TrainingSessionManager:
                     )
             
             # Mark session as completed
+            old_status = session.status
             session.status = "completed"
             session.completed_at = datetime.utcnow()
             session.update_progress()
+            
+            # Notify completion
+            await notify_status_change(
+                session_id,
+                old_status,
+                "completed",
+                f"Training completed. Discovered {len(principles)} principles."
+            )
+            
+            # Notify discovered principles
+            for principle in principles:
+                await notify_principle_discovered(
+                    session_id,
+                    principle
+                )
             
             # Record final metrics
             metrics.increment("training_sessions_completed")
@@ -633,9 +665,26 @@ class TrainingSessionManager:
             )
         
         except Exception as e:
+            old_status = session.status
             session.status = "failed"
             session.error_message = str(e)
             session.updated_at = datetime.utcnow()
+            
+            # Notify failure
+            await notify_status_change(
+                session_id,
+                old_status,
+                "failed",
+                f"Training failed: {str(e)}"
+            )
+            
+            # Notify error details
+            await notify_training_error(
+                session_id,
+                "training_failure",
+                str(e),
+                recoverable=False
+            )
             
             metrics.increment("training_sessions_failed")
             

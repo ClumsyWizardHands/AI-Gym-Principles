@@ -28,6 +28,7 @@ from src.api.training_integration import (
     initialize_training_manager,
     shutdown_training_manager
 )
+from src.api.websocket import websocket_endpoint
 
 # Setup structured logging
 setup_logging()
@@ -212,6 +213,9 @@ async def metrics():
 
 # Include API routes
 app.include_router(api_router, prefix="/api")
+
+# Add WebSocket endpoint
+app.add_websocket_route("/ws/training/{session_id}", websocket_endpoint)
 
 
 if __name__ == "__main__":

@@ -4,10 +4,10 @@ import asyncio
 import time
 import uuid
 from collections import defaultdict
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 import structlog
-from fastapi import Request, Response, status
+from fastapi import Request, Response, status, Query, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -202,3 +202,22 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.api_key = api_key
         
         return await call_next(request)
+
+
+async def validate_api_key_ws(api_key: Optional[str] = Query(None)) -> str:
+    """Validate API key for WebSocket connections."""
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing API key"
+        )
+    
+    # TODO: Validate API key against database
+    # For now, just check if it's not empty
+    if not api_key.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key"
+        )
+    
+    return api_key

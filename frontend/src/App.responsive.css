@@ -1,0 +1,157 @@
+/* Responsive Design Enhancements */
+
+/* Mobile-first responsive breakpoints */
+@media (max-width: 768px) {
+  /* Navigation adjustments */
+  .container {
+    padding: 0 var(--spacing-sm);
+  }
+
+  /* Welcome page */
+  h1 {
+    font-size: 2rem;
+  }
+  
+  /* Training Monitor - Stack panels vertically on mobile */
+  .training-monitor-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  /* Cards on mobile */
+  .card {
+    padding: var(--spacing-md);
+  }
+
+  /* Connection cards should be full width */
+  .connection-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Training type cards */
+  .training-type-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Buttons on mobile */
+  .button-group {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .button-group .button {
+    width: 100%;
+  }
+
+  /* Focus area buttons */
+  .focus-area-buttons {
+    justify-content: center;
+  }
+
+  /* Terminal and principles panels */
+  .terminal {
+    min-height: 300px;
+  }
+
+  /* Report metrics grid */
+  .metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .container {
+    padding: 0 var(--spacing-md);
+  }
+
+  /* Two columns for connection options */
+  .connection-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Dark mode support (respecting system preferences) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #000000;
+    --color-text: #F5F5F7;
+    --color-text-secondary: #86868B;
+    --color-subtle-gray: #1D1D1F;
+    --color-border: #38383A;
+    --color-card-shadow: rgba(255, 255, 255, 0.05);
+  }
+
+  .card {
+    background-color: #1D1D1F;
+  }
+
+  .input {
+    background-color: #2D2D2F;
+    color: var(--color-text);
+  }
+
+  .terminal {
+    background-color: #000000;
+    border: 1px solid var(--color-border);
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  :root {
+    --color-primary: #0066FF;
+    --color-success: #00A400;
+    --color-warning: #FF8800;
+    --color-error: #FF0000;
+  }
+
+  .button:focus {
+    outline: 3px solid currentColor;
+    outline-offset: 2px;
+  }
+}
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+  .button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .input,
+  .textarea {
+    min-height: 44px;
+  }
+
+  .radio-label,
+  .checkbox-label {
+    min-height: 44px;
+  }
+}
+
+/* Print styles */
+@media print {
+  .button-secondary,
+  .button-primary {
+    display: none;
+  }
+
+  .card {
+    box-shadow: none;
+    border: 1px solid #000;
+  }
+
+  .progress-bar-fill::after {
+    display: none;
+  }
+}

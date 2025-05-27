@@ -43,7 +43,17 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-4. Copy environment configuration:
+4. (Optional) Install LangChain support:
+```bash
+# Note: LangChain packages may have dependency conflicts
+# Test thoroughly before using in production
+pip install -r requirements-langchain.txt
+
+# Test compatibility
+python test_langchain_compatibility.py
+```
+
+5. Copy environment configuration:
 ```bash
 cp .env.example .env
 # Edit .env with your specific settings

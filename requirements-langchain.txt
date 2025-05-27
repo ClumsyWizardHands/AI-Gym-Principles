@@ -1,0 +1,15 @@
+# Optional LangChain dependencies
+# Install with: pip install -r requirements-langchain.txt
+# Note: These packages may have conflicts with other dependencies
+# Test thoroughly before using in production
+
+langchain==0.1.0
+langchain-openai==0.0.5
+langchain-anthropic==0.0.3
+langchain-community==0.0.10
+
+# Additional dependencies commonly needed with LangChain
+# Uncomment as needed based on your use case
+# chromadb==0.4.22  # For vector stores
+# tiktoken==0.5.2  # For token counting
+# faiss-cpu==1.7.4  # For similarity search

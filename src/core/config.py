@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     ACTION_BUFFER_SIZE: int = Field(default=1000)
     MEMORY_CACHE_SIZE: int = Field(default=100)
     SESSION_TIMEOUT_MINUTES: int = Field(default=30)
+    ACTION_TIMEOUT_SECONDS: int = Field(default=30)
+    WEBSOCKET_RATE_LIMIT: int = Field(default=120)  # Messages per minute
     
     # Scenario Engine Configuration
     DEFAULT_SCENARIO_TIMEOUT: int = Field(default=300)
@@ -86,7 +88,7 @@ class Settings(BaseSettings):
     API_KEY: Optional[str] = Field(default=None)
     ENABLE_CORS: bool = Field(default=True)
     CORS_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8080"]
+        default=["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"]
     )
     JWT_SECRET_KEY: Optional[str] = Field(default=None)
     JWT_ALGORITHM: str = Field(default="HS256")

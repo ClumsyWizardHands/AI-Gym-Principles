@@ -2,22 +2,35 @@
 
 import time
 import json
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, TYPE_CHECKING
 import asyncio
-
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.memory import ConversationBufferMemory, ConversationSummaryMemory
-from langchain.prompts import PromptTemplate
-from langchain.schema import BaseLanguageModel, BaseMemory
-from langchain.tools import Tool
-from langchain_core.messages import BaseMessage
 import structlog
 
 from .base import AgentInterface, TrainingScenario, AgentDecision, ParseError
 from ..core.models import Action
 
+# Optional LangChain imports
+try:
+    from langchain.agents import AgentExecutor, create_react_agent
+    from langchain.memory import ConversationBufferMemory, ConversationSummaryMemory
+    from langchain.prompts import PromptTemplate
+    from langchain.schema import BaseLanguageModel, BaseMemory
+    from langchain.tools import Tool
+    from langchain_core.messages import BaseMessage
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+    # Type checking imports only
+    if TYPE_CHECKING:
+        from langchain.schema import BaseLanguageModel, BaseMemory
+        from langchain.tools import Tool
 
 logger = structlog.get_logger(__name__)
+
+
+class LangChainNotInstalledError(Exception):
+    """Raised when LangChain is not installed but required."""
+    pass
 
 
 class LangChainAdapter(AgentInterface):
@@ -35,6 +48,14 @@ class LangChainAdapter(AgentInterface):
         retry_delay: float = 1.0,
         **kwargs
     ):
+        if not LANGCHAIN_AVAILABLE:
+            raise LangChainNotInstalledError(
+                "LangChain is not installed. Please install it with:\n"
+                "pip install -r requirements-langchain.txt\n"
+                "Note: LangChain packages may have dependency conflicts. "
+                "Test thoroughly before using in production."
+            )
+        
         super().__init__(max_retries, retry_delay)
         self.llm = llm
         self.agent_type = agent_type

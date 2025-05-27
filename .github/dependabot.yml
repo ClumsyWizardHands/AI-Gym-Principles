@@ -1,0 +1,97 @@
+# Dependabot configuration for automated dependency updates
+version: 2
+
+updates:
+  # Enable version updates for Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "ClumsyWizardHands"
+    assignees:
+      - "ClumsyWizardHands"
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    pull-request-branch-name:
+      separator: "-"
+    groups:
+      # Group all development dependencies together
+      dev-dependencies:
+        patterns:
+          - "pytest*"
+          - "mypy"
+          - "black"
+          - "flake8"
+          - "pre-commit"
+      # Group all FastAPI-related dependencies
+      fastapi:
+        patterns:
+          - "fastapi"
+          - "uvicorn*"
+          - "pydantic*"
+      # Group AI framework dependencies
+      ai-frameworks:
+        patterns:
+          - "openai"
+          - "anthropic"
+          - "langchain*"
+      # Group database dependencies
+      database:
+        patterns:
+          - "sqlalchemy*"
+          - "alembic"
+          - "aiosqlite"
+          - "asyncpg"
+    ignore:
+      # Don't update these dependencies automatically
+      - dependency-name: "numpy"
+        versions: ["2.x"]  # Stay on 1.x for compatibility
+      - dependency-name: "pydantic"
+        versions: ["3.x"]  # Stay on 2.x until we're ready to migrate
+
+  # Enable version updates for Docker
+  - package-ecosystem: "docker"
+    directory: "/deployment"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "ClumsyWizardHands"
+    assignees:
+      - "ClumsyWizardHands"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "ClumsyWizardHands"
+    assignees:
+      - "ClumsyWizardHands"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"

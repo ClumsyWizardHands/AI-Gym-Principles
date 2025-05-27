@@ -1,0 +1,30 @@
+{
+  "include": [
+    "src",
+    "tests",
+    "client/python"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".git"
+  ],
+  "venvPath": ".",
+  "venv": "venv",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.11",
+  "executionEnvironments": [
+    {
+      "root": "src",
+      "pythonVersion": "3.11",
+      "extraPaths": ["./"]
+    },
+    {
+      "root": "client/python",
+      "pythonVersion": "3.11",
+      "extraPaths": ["./"]
+    }
+  ]
+}

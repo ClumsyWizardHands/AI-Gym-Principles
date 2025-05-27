@@ -1,0 +1,253 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  # Run tests on all PRs and pushes
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: principles_gym_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flake8 black mypy pytest-cov
+    
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 src tests --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings. Line length is 88 (black default)
+        flake8 src tests --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+    
+    - name: Format check with black
+      run: |
+        black --check --diff src tests
+    
+    - name: Type check with mypy
+      run: |
+        mypy src --ignore-missing-imports --strict
+    
+    - name: Run tests with pytest
+      env:
+        DATABASE_URL: postgresql+asyncpg://testuser:testpass@localhost:5432/principles_gym_test
+        REDIS_URL: redis://localhost:6379
+        ENVIRONMENT: test
+        SECRET_KEY: test-secret-key
+        API_KEY_SECRET: test-api-key-secret
+      run: |
+        pytest tests/ -v --cov=src --cov-report=xml --cov-report=html --cov-report=term-missing
+    
+    - name: Upload coverage to Codecov
+      if: github.event_name == 'push'
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+    
+    - name: Upload coverage artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: htmlcov/
+        retention-days: 7
+
+  # Build Docker image on push to main/develop
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/ai-principles-gym
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./deployment/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
+        platforms: linux/amd64,linux/arm64
+
+  # Deploy to staging (auto-deploy from develop)
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to staging server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.STAGING_HOST }}
+        username: ${{ secrets.STAGING_USER }}
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        script: |
+          cd /opt/ai-principles-gym
+          git pull origin develop
+          docker-compose pull
+          docker-compose down
+          docker-compose up -d
+          docker-compose ps
+          # Wait for services to be healthy
+          sleep 10
+          curl -f http://localhost/health || exit 1
+
+  # Deploy to production (manual approval required)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment: 
+      name: production
+      url: https://api.principles-gym.ai
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Create deployment
+      uses: chrnorm/deployment-action@v2
+      id: deployment
+      with:
+        token: ${{ github.token }}
+        environment: production
+        ref: ${{ github.sha }}
+    
+    - name: Deploy to production server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.PROD_HOST }}
+        username: ${{ secrets.PROD_USER }}
+        key: ${{ secrets.PROD_SSH_KEY }}
+        script: |
+          cd /opt/ai-principles-gym
+          # Backup current deployment
+          docker-compose exec -T postgres pg_dump -U $POSTGRES_USER $POSTGRES_DB > backup-$(date +%Y%m%d-%H%M%S).sql
+          
+          # Pull latest changes
+          git pull origin main
+          docker-compose pull
+          
+          # Health check before deployment
+          docker-compose exec -T api curl -f http://localhost:8000/health || echo "Pre-deploy health check failed"
+          
+          # Rolling update
+          docker-compose up -d --no-deps --scale api=2 api
+          sleep 30
+          docker-compose up -d --no-deps api
+          docker-compose scale api=1
+          
+          # Post-deployment health check
+          sleep 10
+          curl -f https://api.principles-gym.ai/health || exit 1
+    
+    - name: Update deployment status
+      uses: chrnorm/deployment-status@v2
+      if: always()
+      with:
+        token: ${{ github.token }}
+        deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+        state: ${{ job.status }}
+        environment-url: https://api.principles-gym.ai
+
+  # Notify on failure
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [test, build, deploy-staging, deploy-production]
+    if: failure()
+    
+    steps:
+    - name: Send notification
+      run: |
+        echo "Pipeline failed! Check GitHub Actions for details."
+        # Add your notification logic here (Slack, email, etc.)

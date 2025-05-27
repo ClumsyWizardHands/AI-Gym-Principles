@@ -103,3 +103,6 @@ cython_debug/
 *.bak
 *.tmp
 .secrets/
+
+# Node modules
+node_modules/

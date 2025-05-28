@@ -9,8 +9,11 @@ Railway deployment issues and configuration.
      - Creates venv at `/opt/venv` to avoid Nix's externally managed Python
      - Activates venv for pip installations
      - Uses venv Python for running the application
+   - Updated railway.json:
+     - Removed buildCommand (let nixpacks.toml handle builds)
+     - Updated startCommand to use venv Python
    - This fixes the "externally-managed-environment" error from Nix
-   - Previous attempts with `python -m ensurepip` failed due to Nix restrictions
+   - Note: Railway may cache old builds - may need to clear cache or redeploy
 
 2. Previous plugin system fixes:
    - Removed references to non-existent `Pattern` and `ScenarioContext` types

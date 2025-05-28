@@ -4,6 +4,11 @@
 Railway deployment issues and configuration.
 
 ## Recent Changes
+0. Security fix:
+   - Removed exposed OpenAI API key from `.env` file
+   - OPENAI_API_KEY field now properly empty
+   - `.env` is already in `.gitignore` to prevent tracking
+
 1. Fixed Railway deployment issues:
    - Updated nixpacks.toml to use virtual environment:
      - Creates venv at `/opt/venv` to avoid Nix's externally managed Python

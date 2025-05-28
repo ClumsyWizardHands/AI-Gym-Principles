@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     CACHE_REDIS_URL: Optional[str] = Field(default=None)
     MESSAGE_QUEUE_URL: Optional[str] = Field(default=None)
     
+    # AI Provider API Keys
+    OPENAI_API_KEY: Optional[str] = Field(default=None)
+    ANTHROPIC_API_KEY: Optional[str] = Field(default=None)
+    
     # Security
     API_KEY: Optional[str] = Field(default=None)
     ENABLE_CORS: bool = Field(default=True)

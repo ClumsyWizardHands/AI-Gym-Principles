@@ -4,6 +4,7 @@ from .base import AgentInterface, TrainingScenario, AgentDecision, ParseError
 from .openai_adapter import OpenAIAdapter
 from .anthropic_adapter import AnthropicAdapter
 from .custom_adapter import CustomAdapter
+from .http_adapter import HTTPAdapter
 
 # Optional LangChain import
 try:
@@ -33,4 +34,5 @@ __all__ = [
     "AnthropicAdapter",
     "LangChainAdapter",  # Will be placeholder if LangChain not installed
     "CustomAdapter",
+    "HTTPAdapter",
 ]

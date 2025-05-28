@@ -1,11 +1,13 @@
-import React from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/endpoints'
 import { 
   BarChart, Bar, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts'
+import { 
+  PrincipleEmergenceGraph
+} from '@/components/visualizations'
 
 export function ReportPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
@@ -129,6 +131,41 @@ export function ReportPage() {
         <h3 className="text-lg font-medium text-gray-900 mb-3">Executive Summary</h3>
         <p className="text-gray-700 leading-relaxed">{report.summary}</p>
       </div>
+
+      {/* Advanced Visualizations */}
+      {report.principles_discovered.length > 0 && (
+        <>
+          {/* Principle Emergence Timeline */}
+          <div className="bg-white p-6 rounded-lg shadow-soft">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Principle Emergence Timeline
+            </h3>
+            <PrincipleEmergenceGraph 
+              data={[
+                // Create timeline data showing principle emergence
+                {
+                  timestamp: new Date(report.principles_discovered[0]?.first_observed || report.completed_at),
+                  principles: report.principles_discovered.map(p => ({
+                    name: p.name,
+                    strength: 0.1, // Initial strength
+                    consistency: 0.5 // Initial consistency
+                  }))
+                },
+                {
+                  timestamp: new Date(report.completed_at),
+                  principles: report.principles_discovered.map(p => ({
+                    name: p.name,
+                    strength: p.strength,
+                    consistency: p.consistency
+                  }))
+                }
+              ]}
+              width={800}
+              height={400}
+            />
+          </div>
+        </>
+      )}
 
       {/* Charts */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

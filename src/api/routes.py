@@ -49,7 +49,7 @@ class AgentRegistration(BaseModel):
     @field_validator("framework")
     @classmethod
     def validate_framework(cls, v: str) -> str:
-        valid_frameworks = ["openai", "anthropic", "langchain", "custom"]
+        valid_frameworks = ["openai", "anthropic", "langchain", "custom", "http"]
         if v.lower() not in valid_frameworks:
             raise ValueError(f"Framework must be one of: {', '.join(valid_frameworks)}")
         return v.lower()
@@ -73,6 +73,11 @@ class TrainingRequest(BaseModel):
     )
     num_scenarios: int = Field(default=10, ge=1, le=100)
     adaptive: bool = Field(default=True, description="Enable adaptive scenario generation")
+    use_branching: bool = Field(default=False, description="Include branching scenarios")
+    branching_types: List[str] = Field(
+        default_factory=lambda: ["trust_building", "resource_cascade"],
+        description="Types of branching scenarios to include"
+    )
     
     @field_validator("scenario_types")
     @classmethod
@@ -87,6 +92,18 @@ class TrainingRequest(BaseModel):
                     f"Must be one of: {', '.join(valid_types)}"
                 )
         return [s.upper() for s in v]
+    
+    @field_validator("branching_types")
+    @classmethod
+    def validate_branching_types(cls, v: List[str]) -> List[str]:
+        valid_branching_types = ["trust_building", "resource_cascade"]
+        for branching_type in v:
+            if branching_type not in valid_branching_types:
+                raise ValueError(
+                    f"Invalid branching type: {branching_type}. "
+                    f"Must be one of: {', '.join(valid_branching_types)}"
+                )
+        return v
 
 
 class TrainingResponse(BaseModel):
@@ -139,6 +156,23 @@ class TrainingReport(BaseModel):
 # Dependency for API key validation
 async def validate_api_key(request: Request) -> str:
     """Validate API key from request."""
+    # In development mode, allow access without API key for frontend
+    if settings.ENVIRONMENT == "development":
+        # Check if request is from frontend (no API key)
+        api_key = request.headers.get("X-API-Key")
+        if not api_key:
+            # Create a dev API key if needed
+            dev_key = "sk-dev-key"
+            if dev_key not in api_keys:
+                api_keys[dev_key] = {
+                    "created_at": datetime.utcnow(),
+                    "expires_at": None,
+                    "usage_limit": None,
+                    "usage_count": 0
+                }
+            request.state.api_key = dev_key
+            return dev_key
+    
     api_key = request.headers.get("X-API-Key")
     if not api_key:
         raise HTTPException(
@@ -170,6 +204,7 @@ async def validate_api_key(request: Request) -> str:
             )
         key_data["usage_count"] = key_data.get("usage_count", 0) + 1
     
+    request.state.api_key = api_key
     return api_key
 
 
@@ -318,7 +353,9 @@ async def start_training(
             },
             num_scenarios=training_request.num_scenarios,
             scenario_types=training_request.scenario_types,
-            adaptive=training_request.adaptive
+            adaptive=training_request.adaptive,
+            use_branching=training_request.use_branching,
+            branching_types=training_request.branching_types
         )
         
         # Store session data for API access

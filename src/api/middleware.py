@@ -221,3 +221,20 @@ async def validate_api_key_ws(api_key: Optional[str] = Query(None)) -> str:
         )
     
     return api_key
+
+
+async def get_current_user(request: Request) -> str:
+    """Get the current user from the request.
+    
+    For now, this returns a dummy user ID based on API key.
+    In production, this would validate the API key and return the associated user.
+    """
+    api_key = request.headers.get("X-API-Key")
+    
+    # In development mode, allow no API key
+    if not api_key:
+        return "dev_user"
+    
+    # TODO: In production, validate API key and get user from database
+    # For now, just return a user ID based on the API key
+    return f"user_{api_key[:8]}"

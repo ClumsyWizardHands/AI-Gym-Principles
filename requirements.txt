@@ -16,6 +16,7 @@ psutil==5.9.8
 uvicorn[standard]==0.25.0
 python-dotenv==1.0.0
 sqlalchemy==2.0.23
+alembic==1.13.1  # Database migrations
 aiosqlite==0.19.0
 httpx==0.25.2  # For LLM API calls
 

@@ -101,8 +101,9 @@ export const SCENARIO_TYPES: ScenarioArchetype[] = [
 
 // Framework options
 export const FRAMEWORK_OPTIONS = [
-  { value: 'openai', label: 'OpenAI (GPT-4, GPT-3.5)' },
-  { value: 'anthropic', label: 'Anthropic (Claude)' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
   { value: 'langchain', label: 'LangChain' },
-  { value: 'custom', label: 'Custom Implementation' }
+  { value: 'custom', label: 'Custom' },
+  { value: 'http', label: 'HTTP Endpoint' }
 ] as const

@@ -74,7 +74,7 @@ export const AgentComparisonMatrix: React.FC<AgentComparisonMatrixProps> = ({
     // Sort based on current sorting preference
     if (sortBy === 'value') {
       // Sort by average value across all agents
-      const principleAverages = allPrinciples.map((p, i) => ({
+      const principleAverages = allPrinciples.map((_p, i) => ({
         index: i,
         average: d3.mean(matrix, d => d.values[i] || 0) || 0,
       }));
@@ -136,7 +136,7 @@ export const AgentComparisonMatrix: React.FC<AgentComparisonMatrixProps> = ({
           ? 2 : 1
       )
       .style('cursor', 'pointer')
-      .on('click', (event, d) => {
+      .on('click', (_event, d) => {
         if (d.value !== null) {
           setSelectedCell({ agent: d.agentId, principle: d.principle });
           if (onCellClick) {
@@ -144,7 +144,7 @@ export const AgentComparisonMatrix: React.FC<AgentComparisonMatrixProps> = ({
           }
         }
       })
-      .on('mouseenter', function(event, d) {
+      .on('mouseenter', function(_event, d) {
         if (d.value !== null) {
           d3.select(this).attr('stroke', '#000').attr('stroke-width', 2);
           
@@ -156,7 +156,7 @@ export const AgentComparisonMatrix: React.FC<AgentComparisonMatrixProps> = ({
             });
         }
       })
-      .on('mouseleave', function(event, d) {
+      .on('mouseleave', function(_event, d) {
         d3.select(this)
           .attr('stroke', selectedCell && selectedCell.agent === d.agentId && selectedCell.principle === d.principle
             ? '#000' : '#fff')
@@ -182,7 +182,7 @@ export const AgentComparisonMatrix: React.FC<AgentComparisonMatrixProps> = ({
       .enter().append('text')
       .attr('class', 'agent-label')
       .attr('x', -10)
-      .attr('y', (d, i) => i * cellSize + cellSize / 2)
+      .attr('y', (_d, i) => i * cellSize + cellSize / 2)
       .attr('text-anchor', 'end')
       .attr('dominant-baseline', 'middle')
       .style('font-size', '12px')
@@ -195,7 +195,7 @@ export const AgentComparisonMatrix: React.FC<AgentComparisonMatrixProps> = ({
       .data(allPrinciples)
       .enter().append('text')
       .attr('class', 'principle-label')
-      .attr('transform', (d, i) => `translate(${i * cellSize + cellSize / 2}, -10) rotate(-45)`)
+      .attr('transform', (_d, i) => `translate(${i * cellSize + cellSize / 2}, -10) rotate(-45)`)
       .attr('text-anchor', 'start')
       .style('font-size', '12px')
       .style('cursor', 'pointer')
@@ -258,7 +258,7 @@ export const AgentComparisonMatrix: React.FC<AgentComparisonMatrixProps> = ({
       <div className="absolute top-0 right-0 flex gap-2">
         <select
           value={metric}
-          onChange={(e) => setSortBy('agent')}
+          onChange={(_e) => setSortBy('agent')}
           className="px-3 py-1 border rounded text-sm"
         >
           <option value="strength">Strength</option>

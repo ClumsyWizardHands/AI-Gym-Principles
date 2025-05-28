@@ -1,7 +1,11 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
-import { io, Socket } from 'socket.io-client'
 import toast from 'react-hot-toast'
-import { WebSocketMessage, StatusUpdate, PrincipleDiscovered, ActionRecorded } from '@/api/types'
+
+interface WebSocketMessage {
+  type: string
+  timestamp: string
+  data: any
+}
 
 interface UseWebSocketOptions {
   autoConnect?: boolean
@@ -12,6 +16,7 @@ interface UseWebSocketOptions {
 interface WebSocketState {
   isConnected: boolean
   error: Error | null
+  reconnectCount: number
 }
 
 export function useWebSocket(sessionId: string | null, options: UseWebSocketOptions = {}) {
@@ -21,87 +26,176 @@ export function useWebSocket(sessionId: string | null, options: UseWebSocketOpti
     reconnectDelay = 1000
   } = options
 
-  const socketRef = useRef<Socket | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimeoutRef = useRef<number>()
+  const reconnectCountRef = useRef(0)
+  
   const [state, setState] = useState<WebSocketState>({
     isConnected: false,
-    error: null
+    error: null,
+    reconnectCount: 0
   })
 
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null)
-  const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>([])
-  const [principles, setPrinciples] = useState<PrincipleDiscovered[]>([])
-  const [actions, setActions] = useState<ActionRecorded[]>([])
+  const [statusUpdates, setStatusUpdates] = useState<any[]>([])
+  const [principles, setPrinciples] = useState<any[]>([])
+  const [actions, setActions] = useState<any[]>([])
+  const [entropy, setEntropy] = useState<number>(0)
 
   const connect = useCallback(() => {
-    if (!sessionId || socketRef.current?.connected) return
+    if (!sessionId || wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
     const apiKey = localStorage.getItem('apiKey')
+    if (!apiKey) {
+      toast.error('API key not found. Please login again.')
+      return
+    }
 
-    socketRef.current = io(wsUrl, {
-      auth: {
-        apiKey,
-        sessionId
-      },
-      reconnectionAttempts: reconnectAttempts,
-      reconnectionDelay: reconnectDelay,
-      transports: ['websocket']
-    })
+    // Construct WebSocket URL with API key as query parameter
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsHost = import.meta.env.VITE_WS_URL || `${wsProtocol}//${window.location.host}`
+    const wsUrl = `${wsHost}/ws/training/${sessionId}?api_key=${apiKey}`
 
-    const socket = socketRef.current
+    try {
+      const ws = new WebSocket(wsUrl)
+      wsRef.current = ws
 
-    socket.on('connect', () => {
-      setState({ isConnected: true, error: null })
-      toast.success('Connected to real-time updates')
-    })
-
-    socket.on('disconnect', () => {
-      setState({ isConnected: false, error: null })
-    })
-
-    socket.on('connect_error', (error) => {
-      setState({ isConnected: false, error })
-      toast.error('Failed to connect to real-time updates')
-    })
-
-    socket.on('message', (message: WebSocketMessage) => {
-      setLastMessage(message)
-
-      switch (message.type) {
-        case 'status_update':
-          setStatusUpdates(prev => [...prev, message.data as StatusUpdate])
-          break
-        case 'principle_discovered':
-          setPrinciples(prev => [...prev, message.data as PrincipleDiscovered])
-          toast.success('New principle discovered!')
-          break
-        case 'action_recorded':
-          setActions(prev => [...prev, message.data as ActionRecorded])
-          break
-        case 'error':
-          toast.error(message.data.message || 'An error occurred')
-          break
+      ws.onopen = () => {
+        setState({ isConnected: true, error: null, reconnectCount: reconnectCountRef.current })
+        reconnectCountRef.current = 0
+        console.log('WebSocket connected')
       }
-    })
 
-    // Join session room
-    socket.emit('join_session', { sessionId })
+      ws.onclose = (event) => {
+        setState(prev => ({ ...prev, isConnected: false }))
+        wsRef.current = null
 
+        // Attempt reconnection if not a normal closure
+        if (event.code !== 1000 && reconnectCountRef.current < reconnectAttempts) {
+          reconnectCountRef.current++
+          const delay = reconnectDelay * Math.pow(2, reconnectCountRef.current - 1) // Exponential backoff
+          
+          console.log(`WebSocket closed. Reconnecting in ${delay}ms... (attempt ${reconnectCountRef.current}/${reconnectAttempts})`)
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect()
+          }, delay)
+        } else if (reconnectCountRef.current >= reconnectAttempts) {
+          toast.error('Failed to connect to real-time updates after multiple attempts')
+        }
+      }
+
+      ws.onerror = (event) => {
+        console.error('WebSocket error:', event)
+        setState(prev => ({ ...prev, error: new Error('WebSocket connection error') }))
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const message: WebSocketMessage = JSON.parse(event.data)
+          setLastMessage(message)
+
+          // Handle different message types
+          switch (message.type) {
+            case 'connection_established':
+              toast.success('Connected to real-time updates')
+              break
+
+            case 'progress':
+              // Update progress in status updates
+              setStatusUpdates(prev => [...prev, {
+                type: 'progress',
+                ...message.data
+              }])
+              break
+
+            case 'principle_discovered':
+              setPrinciples(prev => [...prev, message.data])
+              toast.success(`New principle discovered: ${message.data.principle_name}`)
+              break
+
+            case 'action_recorded':
+              setActions(prev => {
+                const newActions = [...prev, message.data]
+                // Keep only last 50 actions to prevent memory issues
+                return newActions.slice(-50)
+              })
+              break
+
+            case 'entropy_update':
+              setEntropy(message.data.entropy)
+              break
+
+            case 'status_change':
+              setStatusUpdates(prev => [...prev, {
+                type: 'status',
+                ...message.data
+              }])
+              if (message.data.new_status === 'completed') {
+                toast.success('Training completed successfully!')
+              } else if (message.data.new_status === 'failed') {
+                toast.error('Training failed')
+              }
+              break
+
+            case 'error':
+              toast.error(message.data.error_message || 'An error occurred')
+              if (!message.data.recoverable) {
+                // Close connection on non-recoverable errors
+                ws.close()
+              }
+              break
+
+            case 'pong':
+              // Response to ping, connection is healthy
+              break
+
+            default:
+              console.log('Unknown message type:', message.type)
+          }
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error)
+        }
+      }
+
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error)
+      setState(prev => ({ ...prev, error: error as Error }))
+    }
   }, [sessionId, reconnectAttempts, reconnectDelay])
 
   const disconnect = useCallback(() => {
-    if (socketRef.current) {
-      socketRef.current.disconnect()
-      socketRef.current = null
-      setState({ isConnected: false, error: null })
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
     }
+    
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'User disconnected')
+      wsRef.current = null
+    }
+    
+    setState({ isConnected: false, error: null, reconnectCount: 0 })
+    reconnectCountRef.current = 0
   }, [])
 
   const sendMessage = useCallback((type: string, data: any) => {
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('message', { type, data })
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type, data }))
+    } else {
+      console.warn('WebSocket is not connected')
     }
   }, [])
+
+  // Send periodic pings to keep connection alive
+  useEffect(() => {
+    if (!state.isConnected) return
+
+    const pingInterval = setInterval(() => {
+      sendMessage('ping', {})
+    }, 30000) // Ping every 30 seconds
+
+    return () => clearInterval(pingInterval)
+  }, [state.isConnected, sendMessage])
 
   // Auto connect/disconnect based on sessionId
   useEffect(() => {
@@ -120,15 +214,18 @@ export function useWebSocket(sessionId: string | null, options: UseWebSocketOpti
     setStatusUpdates([])
     setPrinciples([])
     setActions([])
+    setEntropy(0)
   }, [sessionId])
 
   return {
     isConnected: state.isConnected,
     error: state.error,
+    reconnectCount: state.reconnectCount,
     lastMessage,
     statusUpdates,
     principles,
     actions,
+    entropy,
     connect,
     disconnect,
     sendMessage

@@ -230,7 +230,8 @@ class CustomAdapter(AgentInterface):
                     expected_consequences=result["expected_consequences"],
                     confidence=float(result.get("confidence", self.default_confidence)),
                     parsing_method="dict",
-                    raw_response=json.dumps(result) if result else None
+                    raw_response=json.dumps(result) if result else None,
+                    latency_ms=0  # Will be set later
                 )
             except Exception as e:
                 logger.error(
@@ -254,7 +255,8 @@ class CustomAdapter(AgentInterface):
                                                    parsed.get("consequences", {})),
                     confidence=float(parsed.get("confidence", self.default_confidence)),
                     parsing_method="json",
-                    raw_response=result
+                    raw_response=result,
+                    latency_ms=0  # Will be set later
                 )
             except:
                 # Try regex parsing
@@ -268,7 +270,8 @@ class CustomAdapter(AgentInterface):
                         expected_consequences=parsed.get("consequences", {}),
                         confidence=self.default_confidence * 0.8,  # Lower confidence for regex
                         parsing_method="regex",
-                        raw_response=result
+                        raw_response=result,
+                        latency_ms=0  # Will be set later
                     )
                 except:
                     # If all parsing fails, try to extract action at least
@@ -283,7 +286,8 @@ class CustomAdapter(AgentInterface):
                                 expected_consequences={"raw_response": result},
                                 confidence=self.default_confidence * 0.5,
                                 parsing_method="fallback",
-                                raw_response=result
+                                raw_response=result,
+                                latency_ms=0  # Will be set later
                             )
         
         # If nothing works, raise an error

@@ -38,11 +38,11 @@ class LangChainAdapter(AgentInterface):
     
     def __init__(
         self,
-        llm: BaseLanguageModel,
+        llm: "BaseLanguageModel",
         agent_type: str = "react",  # "react", "conversational", "custom"
         memory_type: str = "buffer",  # "buffer", "summary", "custom"
-        memory: Optional[BaseMemory] = None,
-        tools: Optional[List[Tool]] = None,
+        memory: Optional["BaseMemory"] = None,
+        tools: Optional[List["Tool"]] = None,
         max_iterations: int = 5,
         max_retries: int = 3,
         retry_delay: float = 1.0,
@@ -77,7 +77,7 @@ class LangChainAdapter(AgentInterface):
         self.conversation_history: List[Dict[str, Any]] = []
         self.total_tokens_used = 0
         
-    def _create_memory(self) -> BaseMemory:
+    def _create_memory(self) -> "BaseMemory":
         """Create memory based on specified type."""
         if self.memory_type == "buffer":
             return ConversationBufferMemory(
@@ -100,7 +100,7 @@ class LangChainAdapter(AgentInterface):
                 output_key="output"
             )
     
-    def _create_agent(self) -> AgentExecutor:
+    def _create_agent(self) -> "AgentExecutor":
         """Create agent based on specified type."""
         if self.agent_type == "react":
             return self._create_react_agent()
@@ -114,7 +114,7 @@ class LangChainAdapter(AgentInterface):
                 # Default to ReAct
                 return self._create_react_agent()
     
-    def _create_react_agent(self) -> AgentExecutor:
+    def _create_react_agent(self) -> "AgentExecutor":
         """Create a ReAct agent with structured output."""
         # Add a decision-making tool
         decision_tool = Tool(
@@ -187,7 +187,7 @@ Begin!
             handle_parsing_errors=True
         )
     
-    def _create_conversational_agent(self) -> AgentExecutor:
+    def _create_conversational_agent(self) -> "AgentExecutor":
         """Create a conversational agent with memory."""
         from langchain.agents import create_structured_chat_agent
         

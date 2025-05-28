@@ -19,10 +19,14 @@ from structlog import get_logger
 
 from ..core.models import Action, DecisionContext, RelationalAnchor, AgentProfile
 from ..core.tracking import BehavioralTracker
-from ..core.inference import BehavioralInferenceEngine
+from ..core.inference import PrincipleInferenceEngine
 from .archetypes import (
     ScenarioArchetype, ScenarioTemplate, SCENARIO_TEMPLATES,
     generate_adversarial_scenario, generate_diagnostic_sequence
+)
+from .branching import (
+    BranchingScenario, ScenarioNode, DecisionPath, Choice,
+    create_trust_building_scenario, create_resource_cascade_scenario
 )
 
 
@@ -75,6 +79,39 @@ class ScenarioExecution:
     
     # Resource tracking
     resource_states: List[Dict[str, float]] = field(default_factory=list)
+
+
+@dataclass 
+class BranchingScenarioExecution:
+    """Tracks execution of a branching scenario."""
+    execution_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    scenario: Optional[BranchingScenario] = None
+    state: ScenarioState = ScenarioState.INITIALIZED
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    
+    # Agent tracking
+    agent_id: Optional[str] = None
+    
+    # Current position in tree
+    current_node_id: Optional[str] = None
+    decision_path: Optional[DecisionPath] = None
+    
+    # Context tracking
+    current_context: Dict[str, Any] = field(default_factory=dict)
+    
+    # Node history
+    node_history: List[Tuple[str, datetime]] = field(default_factory=list)
+    
+    # Analysis
+    total_response_time: float = 0.0
+    node_response_times: Dict[str, float] = field(default_factory=dict)
+    
+    def get_current_node(self) -> Optional[ScenarioNode]:
+        """Get current node in scenario tree."""
+        if self.scenario and self.current_node_id:
+            return self.scenario.get_node(self.current_node_id)
+        return None
     
     def duration(self) -> Optional[timedelta]:
         """Calculate scenario duration."""
@@ -135,7 +172,7 @@ class ScenarioEngine:
     def __init__(
         self,
         behavioral_tracker: Optional[BehavioralTracker] = None,
-        inference_engine: Optional[BehavioralInferenceEngine] = None,
+        inference_engine: Optional[PrincipleInferenceEngine] = None,
         default_timeout: float = 300.0  # 5 minutes
     ):
         self.behavioral_tracker = behavioral_tracker
@@ -146,13 +183,20 @@ class ScenarioEngine:
         self.active_executions: Dict[str, ScenarioExecution] = {}
         self.completed_executions: List[ScenarioExecution] = []
         
+        # Branching scenario tracking
+        self.active_branching_executions: Dict[str, BranchingScenarioExecution] = {}
+        self.completed_branching_executions: List[BranchingScenarioExecution] = []
+        
         # Performance metrics
         self.metrics = {
             "total_scenarios": 0,
             "completed_scenarios": 0,
             "timed_out_scenarios": 0,
             "average_response_time": 0.0,
-            "principle_hit_rates": defaultdict(float)
+            "principle_hit_rates": defaultdict(float),
+            "branching_scenarios": 0,
+            "average_path_depth": 0.0,
+            "consistency_scores": []
         }
         
         # Adaptive generation parameters
@@ -662,3 +706,264 @@ class ScenarioEngine:
                 if self.metrics["total_scenarios"] > 0 else 0
             )
         }
+    
+    # Branching scenario methods
+    
+    async def create_branching_scenario(
+        self,
+        scenario_type: str = "trust_building"
+    ) -> BranchingScenarioExecution:
+        """Create a new branching scenario execution."""
+        # Create scenario based on type
+        if scenario_type == "trust_building":
+            scenario = create_trust_building_scenario()
+        elif scenario_type == "resource_cascade":
+            scenario = create_resource_cascade_scenario()
+        else:
+            raise ValueError(f"Unknown branching scenario type: {scenario_type}")
+        
+        execution = BranchingScenarioExecution(
+            scenario=scenario,
+            state=ScenarioState.INITIALIZED,
+            decision_path=DecisionPath()
+        )
+        
+        # Initialize context
+        execution.current_context = scenario.initial_context.copy()
+        
+        self.active_branching_executions[execution.execution_id] = execution
+        self.metrics["total_scenarios"] += 1
+        self.metrics["branching_scenarios"] += 1
+        
+        logger.info(
+            "Created branching scenario",
+            execution_id=execution.execution_id,
+            scenario_type=scenario_type,
+            total_paths=scenario.total_paths
+        )
+        
+        return execution
+    
+    async def present_branching_scenario(
+        self,
+        execution_id: str,
+        agent_id: str
+    ) -> Dict[str, Any]:
+        """Present current node of branching scenario to agent."""
+        execution = self.active_branching_executions.get(execution_id)
+        if not execution:
+            raise ValueError(f"Branching execution {execution_id} not found")
+        
+        execution.agent_id = agent_id
+        
+        # Start scenario if not started
+        if execution.state == ScenarioState.INITIALIZED:
+            execution.start_time = datetime.utcnow()
+            execution.state = ScenarioState.PRESENTED
+            
+            # Start at root node
+            if execution.scenario and execution.scenario.root:
+                execution.current_node_id = execution.scenario.root.id
+                execution.node_history.append((execution.current_node_id, datetime.utcnow()))
+        
+        # Get current node
+        current_node = execution.get_current_node()
+        if not current_node:
+            raise ValueError("No current node in branching scenario")
+        
+        # Apply node context updates
+        execution.current_context = current_node.apply_context_updates(
+            execution.current_context
+        )
+        
+        # Get available choices based on context
+        available_choices = current_node.get_available_choices(execution.current_context)
+        
+        # Return scenario state for agent
+        return {
+            "execution_id": execution_id,
+            "node_id": current_node.id,
+            "description": current_node.description,
+            "context": execution.current_context,
+            "choices": [
+                {
+                    "id": choice.id,
+                    "description": choice.description,
+                    "requirements": choice.requirements
+                }
+                for choice in available_choices
+            ],
+            "path_depth": len(execution.decision_path.decisions) if execution.decision_path else 0,
+            "is_terminal": current_node.is_terminal
+        }
+    
+    async def record_branching_response(
+        self,
+        execution_id: str,
+        choice_id: str,
+        response_metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Record agent's choice in branching scenario."""
+        execution = self.active_branching_executions.get(execution_id)
+        if not execution:
+            raise ValueError(f"Branching execution {execution_id} not found")
+        
+        # Get current node
+        current_node = execution.get_current_node()
+        if not current_node:
+            raise ValueError("No current node in branching scenario")
+        
+        # Find the chosen option
+        chosen = next(
+            (c for c in current_node.choices if c.id == choice_id),
+            None
+        )
+        if not chosen:
+            return {
+                "status": "error",
+                "message": f"Invalid choice_id: {choice_id}"
+            }
+        
+        # Check if choice is available
+        if not chosen.is_available(execution.current_context):
+            return {
+                "status": "error",
+                "message": f"Choice {choice_id} is not available in current context"
+            }
+        
+        # Record response time for this node
+        node_start = execution.node_history[-1][1] if execution.node_history else execution.start_time
+        if node_start:
+            response_time = (datetime.utcnow() - node_start).total_seconds()
+            execution.node_response_times[current_node.id] = response_time
+            execution.total_response_time += response_time
+        
+        # Update decision path
+        if execution.decision_path:
+            execution.decision_path.add_decision(current_node.id, chosen)
+        
+        # Track action for behavioral analysis
+        if self.behavioral_tracker and execution.agent_id and execution.scenario:
+            action = Action(
+                action_id=f"{execution.execution_id}_{current_node.id}",
+                timestamp=datetime.utcnow(),
+                action_type=f"branching_choice_{execution.scenario.archetype.value}",
+                decision_context=self._get_context_for_archetype(execution.scenario.archetype),
+                relational_anchor=RelationalAnchor(
+                    who_affected=execution.current_context.get("primary_actor", "Unknown"),
+                    how_affected=chosen.description,
+                    intensity=max(abs(v) for v in chosen.impacts.values()) if chosen.impacts else 0.5
+                ),
+                metadata={
+                    "scenario_id": execution.execution_id,
+                    "node_id": current_node.id,
+                    "choice_id": choice_id,
+                    "path_depth": len(execution.decision_path.decisions),
+                    "response_time": response_time if 'response_time' in locals() else None,
+                    **chosen.principle_alignment
+                }
+            )
+            await self.behavioral_tracker.track_action(execution.agent_id, action)
+        
+        # Check if scenario is complete
+        if current_node.is_terminal or not chosen.next_node_id:
+            return await self._complete_branching_scenario(execution)
+        
+        # Move to next node
+        next_node = execution.scenario.get_node(chosen.next_node_id) if execution.scenario else None
+        if not next_node:
+            return {
+                "status": "error",
+                "message": f"Next node {chosen.next_node_id} not found"
+            }
+        
+        execution.current_node_id = next_node.id
+        execution.node_history.append((next_node.id, datetime.utcnow()))
+        execution.state = ScenarioState.IN_PROGRESS
+        
+        # Present next node
+        return await self.present_branching_scenario(execution_id, execution.agent_id)
+    
+    async def _complete_branching_scenario(
+        self,
+        execution: BranchingScenarioExecution
+    ) -> Dict[str, Any]:
+        """Complete a branching scenario execution."""
+        execution.end_time = datetime.utcnow()
+        execution.state = ScenarioState.COMPLETED
+        
+        # Calculate final metrics
+        consistency_score = execution.decision_path.get_consistency_score() if execution.decision_path else 0.0
+        self.metrics["consistency_scores"].append(consistency_score)
+        
+        # Update average path depth
+        path_depth = len(execution.decision_path.decisions) if execution.decision_path else 0
+        current_avg = self.metrics["average_path_depth"]
+        n = self.metrics["branching_scenarios"]
+        self.metrics["average_path_depth"] = (
+            (current_avg * (n - 1) + path_depth) / n
+        )
+        
+        # Get outcome category from final node
+        current_node = execution.get_current_node()
+        outcome_category = current_node.outcome_category if current_node else "unknown"
+        
+        # Move to completed
+        del self.active_branching_executions[execution.execution_id]
+        self.completed_branching_executions.append(execution)
+        self.metrics["completed_scenarios"] += 1
+        
+        # Prepare result
+        result = {
+            "status": "completed",
+            "execution_id": execution.execution_id,
+            "outcome": {
+                "category": outcome_category,
+                "consistency_score": consistency_score,
+                "path_depth": path_depth,
+                "total_response_time": execution.total_response_time,
+                "decision_path": [
+                    {
+                        "node_id": node_id,
+                        "choice_id": choice_id,
+                        "timestamp": execution.decision_path.decision_times[i].isoformat()
+                    }
+                    for i, (node_id, choice_id) in enumerate(execution.decision_path.decisions)
+                ] if execution.decision_path else [],
+                "total_impacts": execution.decision_path.total_impacts if execution.decision_path else {},
+                "principle_scores": {
+                    principle: {
+                        "mean": np.mean(scores),
+                        "variance": np.var(scores),
+                        "consistency": 1.0 / (1.0 + np.var(scores))
+                    }
+                    for principle, scores in execution.decision_path.principle_scores.items()
+                } if execution.decision_path else {}
+            }
+        }
+        
+        logger.info(
+            "Completed branching scenario",
+            execution_id=execution.execution_id,
+            outcome_category=outcome_category,
+            consistency_score=consistency_score,
+            path_depth=path_depth
+        )
+        
+        return result
+    
+    def _get_context_for_archetype(self, archetype: ScenarioArchetype) -> DecisionContext:
+        """Map scenario archetype to decision context."""
+        context_map = {
+            ScenarioArchetype.LOYALTY: DecisionContext.COLLABORATION,
+            ScenarioArchetype.SCARCITY: DecisionContext.RESOURCE_ALLOCATION,
+            ScenarioArchetype.BETRAYAL: DecisionContext.TRUST_VIOLATION,
+            ScenarioArchetype.TRADEOFFS: DecisionContext.TRADE_OFF,
+            ScenarioArchetype.TIME_PRESSURE: DecisionContext.CRISIS,
+            ScenarioArchetype.OBEDIENCE_AUTONOMY: DecisionContext.POWER_DYNAMICS,
+            ScenarioArchetype.INFO_ASYMMETRY: DecisionContext.UNCERTAINTY,
+            ScenarioArchetype.REPUTATION_MGMT: DecisionContext.ETHICAL_DILEMMA,
+            ScenarioArchetype.POWER_DYNAMICS: DecisionContext.POWER_DYNAMICS,
+            ScenarioArchetype.MORAL_HAZARD: DecisionContext.ETHICAL_DILEMMA
+        }
+        return context_map.get(archetype, DecisionContext.ROUTINE)

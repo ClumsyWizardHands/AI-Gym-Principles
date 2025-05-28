@@ -1,0 +1,8 @@
+# Optional TensorFlow dependencies for Neural Network Inference Plugin
+# Install with: pip install -r requirements-tensorflow.txt
+
+# TensorFlow with CPU support (use tensorflow-gpu for GPU support)
+tensorflow==2.15.0
+
+# Additional dependencies for neural network plugin
+tensorflow-probability==0.23.0

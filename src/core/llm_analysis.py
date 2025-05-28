@@ -21,8 +21,12 @@ from .models import (
     RelationalAnchor, PrincipleLineage
 )
 from .config import settings
-from .inference import TemporalPattern
-from ..scenarios.engine import TrainingScenario
+from ..adapters.base import TrainingScenario
+
+# Import TYPE_CHECKING to avoid circular imports
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .inference import TemporalPattern
 
 logger = structlog.get_logger()
 
@@ -110,7 +114,7 @@ class LLMAnalyzer:
     
     async def generate_principle_description(
         self, 
-        pattern: TemporalPattern
+        pattern: "TemporalPattern"
     ) -> str:
         """Generate rich, nuanced principle descriptions using LLM.
         
@@ -502,7 +506,7 @@ Be specific and base insights on the actual behavioral data."""
         
         raise Exception(f"LLM call failed after {settings.LLM_MAX_RETRIES} attempts: {last_error}")
     
-    def _template_fallback(self, pattern: TemporalPattern) -> str:
+    def _template_fallback(self, pattern: "TemporalPattern") -> str:
         """Generate template-based description when LLM is unavailable."""
         # Analyze pattern for template generation
         actions = pattern.action_sequence
@@ -547,7 +551,7 @@ Be specific and base insights on the actual behavioral data."""
         
         return "\n".join(summaries)
     
-    def _summarize_relationships(self, pattern: TemporalPattern) -> str:
+    def _summarize_relationships(self, pattern: "TemporalPattern") -> str:
         """Summarize relational dynamics in a pattern."""
         actions = pattern.action_sequence
         if not actions:

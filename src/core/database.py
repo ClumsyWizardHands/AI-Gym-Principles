@@ -53,7 +53,7 @@ class AgentProfile(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     behavioral_entropy = Column(Float, default=0.0, nullable=False)
     total_actions = Column(Integer, default=0, nullable=False)
-    metadata = Column(JSON, default=dict, nullable=False)
+    agent_metadata = Column(JSON, default=dict, nullable=False)
     
     # Relationships
     actions = relationship("Action", back_populates="agent", cascade="all, delete-orphan")
@@ -74,7 +74,7 @@ class AgentProfile(Base):
             "created_at": self.created_at.isoformat(),
             "behavioral_entropy": self.behavioral_entropy,
             "total_actions": self.total_actions,
-            "metadata": self.metadata
+            "metadata": self.agent_metadata
         }
 
 
@@ -165,7 +165,7 @@ class Principle(Base):
     last_updated = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     # Additional metadata
-    metadata = Column(JSON, default=dict, nullable=False)
+    principle_metadata = Column(JSON, default=dict, nullable=False)
     
     # Relationships
     agent = relationship("AgentProfile", back_populates="principles")
@@ -199,7 +199,7 @@ class Principle(Base):
             "lineage_data": self.lineage_data,
             "created_at": self.created_at.isoformat(),
             "last_updated": self.last_updated.isoformat(),
-            "metadata": self.metadata
+            "metadata": self.principle_metadata
         }
 
 
@@ -229,7 +229,7 @@ class DatabaseManager:
         self.engine = create_async_engine(
             self.database_url,
             poolclass=pool_class,
-            echo=settings.DEBUG,  # Enable SQL logging in debug mode
+            echo=settings.DEBUG_MODE,  # Enable SQL logging in debug mode
             future=True,
             **pool_kwargs
         )
@@ -390,7 +390,7 @@ class DatabaseManager:
             agent = AgentProfile(
                 agent_id=agent_id,
                 name=name,
-                metadata=metadata or {}
+                agent_metadata=metadata or {}
             )
             session.add(agent)
             await session.flush()

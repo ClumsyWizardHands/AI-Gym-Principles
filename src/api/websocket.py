@@ -397,6 +397,42 @@ async def notify_principle_discovered(
     )
 
 
+async def notify_action_recorded(
+    session_id: str,
+    action: Dict[str, Any]
+):
+    """Helper function to notify when an action is recorded."""
+    await connection_manager.broadcast_update(
+        session_id,
+        "action_recorded",
+        {
+            "action_type": action.get("action_type"),
+            "decision_context": action.get("decision_context"),
+            "timestamp": action.get("timestamp", datetime.utcnow().isoformat()),
+            "choice": action.get("choice"),
+            "reasoning": action.get("reasoning"),
+            "message": f"Action recorded: {action.get('action_type', 'unknown')}"
+        }
+    )
+
+
+async def notify_behavioral_entropy(
+    session_id: str,
+    entropy: float,
+    pattern_count: int
+):
+    """Helper function to notify behavioral entropy update."""
+    await connection_manager.broadcast_update(
+        session_id,
+        "entropy_update",
+        {
+            "entropy": entropy,
+            "pattern_count": pattern_count,
+            "message": f"Behavioral entropy: {entropy:.2f}"
+        }
+    )
+
+
 async def notify_status_change(
     session_id: str,
     old_status: str,

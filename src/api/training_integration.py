@@ -15,20 +15,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import settings
 from src.core.database import DatabaseManager
 from src.core.models import AgentProfile, Action, Principle, DecisionContext
-from src.core.tracking import BehaviorTracker
+from src.core.tracking import BehavioralTracker as BehaviorTracker
 from src.core.inference import PrincipleInferenceEngine
 from src.core.monitoring import MetricsCollector, monitor_performance
 from src.scenarios.engine import ScenarioEngine
 from src.scenarios.archetypes import ScenarioArchetype
 from src.adapters import (
     AgentInterface, AgentDecision, TrainingScenario,
-    OpenAIAdapter, AnthropicAdapter, LangChainAdapter, CustomAdapter
+    OpenAIAdapter, AnthropicAdapter, LangChainAdapter, CustomAdapter, HTTPAdapter
 )
 from src.api.websocket import (
     notify_training_progress,
     notify_principle_discovered,
     notify_status_change,
-    notify_training_error
+    notify_training_error,
+    notify_action_recorded,
+    notify_behavioral_entropy
 )
 
 logger = structlog.get_logger()
@@ -212,6 +214,22 @@ class AgentAdapterFactory:
                     name=config.get("name", function_name)
                 )
             
+            elif framework == "http":
+                # Create HTTP adapter
+                endpoint_url = config.get("endpoint_url")
+                if not endpoint_url:
+                    raise ValueError("HTTP endpoint URL not specified")
+                
+                return HTTPAdapter(
+                    endpoint_url=endpoint_url,
+                    method=config.get("method", "POST"),
+                    headers=config.get("headers", {}),
+                    auth_token=config.get("auth_token"),
+                    timeout=config.get("timeout", 30),
+                    request_format=config.get("request_format", "json"),
+                    response_format=config.get("response_format", "json")
+                )
+            
             else:
                 raise ValueError(f"Unsupported framework: {framework}")
         
@@ -237,7 +255,9 @@ class TrainingSession:
         inference_engine: PrincipleInferenceEngine,
         num_scenarios: int,
         scenario_types: List[str],
-        adaptive: bool = True
+        adaptive: bool = True,
+        use_branching: bool = False,
+        branching_types: List[str] = None
     ):
         self.session_id = session_id
         self.agent_id = agent_id
@@ -248,6 +268,8 @@ class TrainingSession:
         self.num_scenarios = num_scenarios
         self.scenario_types = scenario_types
         self.adaptive = adaptive
+        self.use_branching = use_branching
+        self.branching_types = branching_types or ["trust_building", "resource_cascade"]
         
         # Session state
         self.status = "initialized"
@@ -349,7 +371,9 @@ class TrainingSessionManager:
         agent_config: dict,
         num_scenarios: int,
         scenario_types: List[str],
-        adaptive: bool = True
+        adaptive: bool = True,
+        use_branching: bool = False,
+        branching_types: List[str] = None
     ) -> str:
         """Create a new training session."""
         # Check concurrent session limit
@@ -390,7 +414,10 @@ class TrainingSessionManager:
                 
                 # Get or create scenario engine
                 if agent_id not in self._scenario_engines:
-                    self._scenario_engines[agent_id] = ScenarioEngine(agent_id)
+                    self._scenario_engines[agent_id] = ScenarioEngine(
+                        behavioral_tracker=self._behavior_trackers[agent_id],
+                        inference_engine=None  # Will be set after inference engine is created
+                    )
                 
                 # Get or create inference engine
                 if agent_id not in self._inference_engines:
@@ -400,6 +427,10 @@ class TrainingSessionManager:
                         db_manager=self.db_manager
                     )
                     await self._inference_engines[agent_id].start()
+                    
+                    # Set inference engine in scenario engine
+                    if agent_id in self._scenario_engines:
+                        self._scenario_engines[agent_id].inference_engine = self._inference_engines[agent_id]
                 
                 # Create session
                 session = TrainingSession(
@@ -411,7 +442,9 @@ class TrainingSessionManager:
                     inference_engine=self._inference_engines[agent_id],
                     num_scenarios=num_scenarios,
                     scenario_types=scenario_types,
-                    adaptive=adaptive
+                    adaptive=adaptive,
+                    use_branching=use_branching,
+                    branching_types=branching_types
                 )
                 
                 self.sessions[session_id] = session
@@ -461,131 +494,18 @@ class TrainingSessionManager:
                     session.error_message = "Too many failures, circuit breaker opened"
                     break
                 
-                # Generate scenario
-                scenario = None
-                if session.adaptive and scenario_num > 0:
-                    # Get current principles for adaptive generation
-                    principles = await session.inference_engine.get_current_principles()
-                    weak_principles = [
-                        p for p in principles
-                        if p.strength < 0.5 or p.consistency_score < 0.7
-                    ]
-                    
-                    if weak_principles and scenario_num % 3 == 0:
-                        # Every 3rd scenario, target weak principles
-                        scenario = session.scenario_engine.generate_adversarial_scenario(
-                            weak_principles
-                        )
+                # Determine whether to use branching scenario
+                use_branching = False
+                if session.use_branching:
+                    # Use branching for every other scenario, or based on configuration
+                    use_branching = scenario_num % 2 == 0
                 
-                if not scenario:
-                    # Generate based on types or stress
-                    if session.scenario_types:
-                        archetype = ScenarioArchetype[
-                            session.scenario_types[scenario_num % len(session.scenario_types)]
-                        ]
-                        scenario = session.scenario_engine.generate_scenario(archetype)
-                    else:
-                        scenario = session.scenario_engine.generate_scenario()
-                
-                # Present scenario to agent
-                start_time = time.time()
-                session.scenario_engine.present_scenario(scenario.id)
-                
-                try:
-                    # Get agent decision with timeout
-                    training_scenario = TrainingScenario(
-                        id=scenario.id,
-                        description=scenario.description,
-                        context=scenario.metadata,
-                        options=[
-                            {"id": f"option_{i}", "description": opt}
-                            for i, opt in enumerate(scenario.options)
-                        ],
-                        metadata=scenario.metadata
-                    )
-                    
-                    # Create async task with timeout
-                    decision_task = asyncio.create_task(
-                        session.agent_adapter.get_decision(training_scenario)
-                    )
-                    
-                    decision = await asyncio.wait_for(
-                        decision_task,
-                        timeout=settings.ACTION_TIMEOUT_SECONDS
-                    )
-                    
-                    # Record success with circuit breaker
-                    session.circuit_breaker.record_success()
-                    
-                except asyncio.TimeoutError:
-                    session.action_timeouts += 1
-                    session.circuit_breaker.record_failure()
-                    
-                    logger.warning(
-                        "agent_decision_timeout",
-                        session_id=session_id,
-                        scenario_id=scenario.id,
-                        timeout=settings.ACTION_TIMEOUT_SECONDS
-                    )
-                    
-                    # Create timeout decision
-                    decision = AgentDecision(
-                        choice="timeout",
-                        reasoning="Decision timed out",
-                        metadata={"timeout": True}
-                    )
-                
-                except Exception as e:
-                    session.circuit_breaker.record_failure()
-                    logger.error(
-                        "agent_decision_error",
-                        session_id=session_id,
-                        scenario_id=scenario.id,
-                        error=str(e)
-                    )
-                    
-                    # Create error decision
-                    decision = AgentDecision(
-                        choice="error",
-                        reasoning=f"Error: {str(e)}",
-                        metadata={"error": True}
-                    )
-                
-                # Track behavior
-                action = Action(
-                    agent_id=session.agent_id,
-                    timestamp=datetime.utcnow(),
-                    scenario_id=scenario.id,
-                    decision_type=scenario.archetype.value,
-                    decision_context=DecisionContext.from_scenario_type(
-                        scenario.archetype
-                    ),
-                    choice=decision.choice,
-                    reasoning=decision.reasoning,
-                    confidence_score=decision.confidence,
-                    resource_constraints=scenario.constraints,
-                    relationships={
-                        "affected_parties": scenario.stakeholders,
-                        "relationship_type": scenario.metadata.get(
-                            "relationship_type", "neutral"
-                        )
-                    },
-                    metadata={
-                        **decision.metadata,
-                        "scenario_stress": scenario.stress_level,
-                        "response_time": time.time() - start_time
-                    }
-                )
-                
-                await session.behavior_tracker.track_action(action)
-                session.total_actions += 1
-                
-                # Process scenario outcome
-                outcome = session.scenario_engine.process_response(
-                    scenario.id,
-                    decision.choice,
-                    decision.reasoning
-                )
+                if use_branching:
+                    # Run branching scenario
+                    await self._run_branching_scenario(session, scenario_num)
+                else:
+                    # Run single scenario
+                    await self._run_single_scenario(session, scenario_num)
                 
                 # Update progress
                 session.scenarios_completed += 1
@@ -596,12 +516,6 @@ class TrainingSessionManager:
                     session_id,
                     session.scenarios_completed,
                     session.num_scenarios
-                )
-                
-                # Record metrics
-                metrics.observe(
-                    "scenario_execution_time",
-                    time.time() - start_time
                 )
             
             # Run final inference
@@ -845,11 +759,362 @@ class TrainingSessionManager:
             )
         
         except Exception as e:
+                logger.error(
+                    "session_cleanup_error",
+                    session_id=session_id,
+                    error=str(e)
+                )
+    
+    async def _run_single_scenario(self, session: TrainingSession, scenario_num: int):
+        """Run a single (non-branching) scenario."""
+        # Generate scenario
+        execution = None
+        if session.adaptive and scenario_num > 0:
+            # Get current principles for adaptive generation
+            principles = await session.inference_engine.get_current_principles()
+            weak_principles = [
+                p for p in principles
+                if p.strength < 0.5 or p.consistency_score < 0.7
+            ]
+            
+            if weak_principles and scenario_num % 3 == 0:
+                # Generate adaptive scenario based on weak principles
+                execution = await session.scenario_engine.generate_adaptive_scenario(
+                    session.agent_id,
+                    target_principles=[p.name for p in weak_principles]
+                )
+        
+        if not execution:
+            # Generate based on types or stress
+            if session.scenario_types:
+                archetype = ScenarioArchetype[
+                    session.scenario_types[scenario_num % len(session.scenario_types)]
+                ]
+                execution = await session.scenario_engine.create_scenario(archetype)
+            else:
+                # Random scenario
+                import random
+                archetype = random.choice(list(ScenarioArchetype))
+                execution = await session.scenario_engine.create_scenario(archetype)
+        
+        # Present scenario to agent
+        start_time = time.time()
+        presentation = await session.scenario_engine.present_scenario(
+            execution.execution_id,
+            session.agent_id
+        )
+        
+        try:
+            # Get agent decision with timeout
+            training_scenario = TrainingScenario(
+                id=execution.execution_id,
+                description=presentation["description"],
+                context=presentation.get("resources", {}),
+                options=presentation["choice_options"],
+                metadata={
+                    "execution_id": execution.execution_id,
+                    "archetype": presentation.get("archetype"),
+                    **presentation
+                }
+            )
+            
+            # Create async task with timeout
+            decision_task = asyncio.create_task(
+                session.agent_adapter.get_decision(training_scenario)
+            )
+            
+            decision = await asyncio.wait_for(
+                decision_task,
+                timeout=settings.ACTION_TIMEOUT_SECONDS
+            )
+            
+            # Record success with circuit breaker
+            session.circuit_breaker.record_success()
+            
+        except asyncio.TimeoutError:
+            session.action_timeouts += 1
+            session.circuit_breaker.record_failure()
+            
+            logger.warning(
+                "agent_decision_timeout",
+                session_id=session.session_id,
+                scenario_id=execution.execution_id,
+                timeout=settings.ACTION_TIMEOUT_SECONDS
+            )
+            
+            # Create timeout decision
+            decision = AgentDecision(
+                choice="timeout",
+                reasoning="Decision timed out",
+                metadata={"timeout": True}
+            )
+        
+        except Exception as e:
+            session.circuit_breaker.record_failure()
             logger.error(
-                "session_cleanup_error",
-                session_id=session_id,
+                "agent_decision_error",
+                session_id=session.session_id,
+                scenario_id=execution.execution_id,
                 error=str(e)
             )
+            
+            # Create error decision
+            decision = AgentDecision(
+                choice="error",
+                reasoning=f"Error: {str(e)}",
+                metadata={"error": True}
+            )
+        
+        # Find matching choice ID
+        choice_id = None
+        for choice in presentation["choice_options"]:
+            if (choice["id"] == decision.choice or 
+                choice["description"].lower() in decision.choice.lower()):
+                choice_id = choice["id"]
+                break
+        
+        if not choice_id:
+            # Try to match by index
+            try:
+                choice_idx = int(decision.choice) - 1
+                if 0 <= choice_idx < len(presentation["choice_options"]):
+                    choice_id = presentation["choice_options"][choice_idx]["id"]
+            except ValueError:
+                pass
+        
+        if not choice_id:
+            # Default to first choice
+            choice_id = presentation["choice_options"][0]["id"]
+            logger.warning(
+                "could_not_match_single_scenario_choice",
+                agent_choice=decision.choice,
+                available_choices=[c["id"] for c in presentation["choice_options"]],
+                defaulting_to=choice_id
+            )
+        
+        # Record the response
+        response_dict = {
+            "choice_id": choice_id,
+            "reasoning": decision.reasoning,
+            "confidence": decision.confidence
+        }
+        
+        result = await session.scenario_engine.record_response(
+            execution.execution_id,
+            response_dict
+        )
+        
+        session.total_actions += 1
+        
+        # Send action recorded notification
+        await notify_action_recorded(
+            session.session_id,
+            {
+                "action_type": "scenario_response",
+                "decision_context": presentation.get("archetype", "unknown"),
+                "timestamp": datetime.utcnow().isoformat(),
+                "choice": choice_id,
+                "reasoning": decision.reasoning,
+                "scenario_id": execution.execution_id
+            }
+        )
+        
+        # Periodically update behavioral entropy
+        if session.total_actions % 5 == 0:  # Every 5 actions
+            entropy = await session.behavior_tracker.calculate_entropy()
+            patterns = await session.behavior_tracker.extract_patterns()
+            await notify_behavioral_entropy(
+                session.session_id,
+                entropy,
+                len(patterns)
+            )
+        
+        # Record metrics
+        metrics.observe(
+            "scenario_execution_time",
+            time.time() - start_time
+        )
+    
+    async def _run_branching_scenario(self, session: TrainingSession, scenario_num: int):
+        """Run a branching scenario."""
+        # Select branching scenario type
+        branching_type = session.branching_types[
+            scenario_num % len(session.branching_types)
+        ]
+        
+        # Create branching scenario
+        execution = await session.scenario_engine.create_branching_scenario(
+            scenario_type=branching_type
+        )
+        
+        # Present initial node
+        presentation = await session.scenario_engine.present_branching_scenario(
+            execution.execution_id,
+            session.agent_id
+        )
+        
+        # Navigate through the branching scenario
+        while not presentation.get("is_terminal", False):
+            start_time = time.time()
+            
+            # Create training scenario for agent
+            training_scenario = TrainingScenario(
+                id=presentation["node_id"],
+                description=presentation["description"],
+                context=presentation["context"],
+                options=presentation["choices"],
+                metadata={
+                    "execution_id": execution.execution_id,
+                    "path_depth": presentation["path_depth"],
+                    **presentation.get("context", {})
+                }
+            )
+            
+            try:
+                # Get agent decision
+                decision_task = asyncio.create_task(
+                    session.agent_adapter.get_decision(training_scenario)
+                )
+                
+                decision = await asyncio.wait_for(
+                    decision_task,
+                    timeout=settings.ACTION_TIMEOUT_SECONDS
+                )
+                
+                # Record success
+                session.circuit_breaker.record_success()
+                
+                # Find matching choice
+                choice_id = None
+                for choice in presentation["choices"]:
+                    if (choice["id"] == decision.choice or 
+                        choice["description"].lower() in decision.choice.lower()):
+                        choice_id = choice["id"]
+                        break
+                
+                if not choice_id:
+                    # Try to match by index
+                    try:
+                        choice_idx = int(decision.choice) - 1
+                        if 0 <= choice_idx < len(presentation["choices"]):
+                            choice_id = presentation["choices"][choice_idx]["id"]
+                    except ValueError:
+                        pass
+                
+                if not choice_id:
+                    # Default to first choice
+                    choice_id = presentation["choices"][0]["id"]
+                    logger.warning(
+                        "could_not_match_choice",
+                        agent_choice=decision.choice,
+                        available_choices=[c["id"] for c in presentation["choices"]],
+                        defaulting_to=choice_id
+                    )
+                
+                # Record the response
+                result = await session.scenario_engine.record_branching_response(
+                    execution.execution_id,
+                    choice_id,
+                    {
+                        "reasoning": decision.reasoning,
+                        "confidence": decision.confidence,
+                        "response_time": time.time() - start_time
+                    }
+                )
+                
+                session.total_actions += 1
+                
+                # Send action recorded notification
+                await notify_action_recorded(
+                    session.session_id,
+                    {
+                        "action_type": "branching_response",
+                        "decision_context": branching_type,
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "choice": choice_id,
+                        "reasoning": decision.reasoning,
+                        "node_id": presentation["node_id"],
+                        "path_depth": presentation["path_depth"]
+                    }
+                )
+                
+                # Periodically update behavioral entropy
+                if session.total_actions % 5 == 0:  # Every 5 actions
+                    entropy = await session.behavior_tracker.calculate_entropy()
+                    patterns = await session.behavior_tracker.extract_patterns()
+                    await notify_behavioral_entropy(
+                        session.session_id,
+                        entropy,
+                        len(patterns)
+                    )
+                
+                # Check if completed or get next node
+                if result["status"] == "completed":
+                    presentation = result
+                    break
+                else:
+                    presentation = result
+                
+            except asyncio.TimeoutError:
+                session.action_timeouts += 1
+                session.circuit_breaker.record_failure()
+                
+                logger.warning(
+                    "branching_decision_timeout",
+                    session_id=session.session_id,
+                    node_id=presentation["node_id"]
+                )
+                
+                # Choose default option
+                choice_id = presentation["choices"][0]["id"]
+                result = await session.scenario_engine.record_branching_response(
+                    execution.execution_id,
+                    choice_id,
+                    {"timeout": True}
+                )
+                
+                if result["status"] == "completed":
+                    break
+                else:
+                    presentation = result
+                
+            except Exception as e:
+                session.circuit_breaker.record_failure()
+                logger.error(
+                    "branching_decision_error",
+                    session_id=session.session_id,
+                    node_id=presentation["node_id"],
+                    error=str(e)
+                )
+                
+                # Choose default option and continue
+                choice_id = presentation["choices"][0]["id"]
+                result = await session.scenario_engine.record_branching_response(
+                    execution.execution_id,
+                    choice_id,
+                    {"error": str(e)}
+                )
+                
+                if result["status"] == "completed":
+                    break
+                else:
+                    presentation = result
+            
+            # Record metrics for this node
+            metrics.observe(
+                "branching_node_execution_time",
+                time.time() - start_time
+            )
+        
+        # Log completion
+        logger.info(
+            "branching_scenario_completed",
+            session_id=session.session_id,
+            execution_id=execution.execution_id,
+            outcome_category=presentation.get("outcome", {}).get("category", "unknown"),
+            consistency_score=presentation.get("outcome", {}).get("consistency_score", 0.0),
+            path_depth=presentation.get("outcome", {}).get("path_depth", 0)
+        )
 
 
 # Global instance

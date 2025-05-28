@@ -9,7 +9,7 @@ export interface APIKeyResponse {
 
 export interface AgentRegistration {
   name: string
-  framework: 'openai' | 'anthropic' | 'langchain' | 'custom'
+  framework: 'openai' | 'anthropic' | 'langchain' | 'custom' | 'http'
   config: Record<string, any>
   description?: string
 }

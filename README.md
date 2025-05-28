@@ -43,15 +43,23 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-4. (Optional) Install LangChain support:
-```bash
-# Note: LangChain packages may have dependency conflicts
-# Test thoroughly before using in production
-pip install -r requirements-langchain.txt
+4. (Optional) Install additional dependencies:
 
-# Test compatibility
-python test_langchain_compatibility.py
-```
+   **LangChain Support:**
+   ```bash
+   # Note: LangChain packages may have dependency conflicts
+   # Test thoroughly before using in production
+   pip install -r requirements-langchain.txt
+
+   # Test compatibility
+   python test_langchain_compatibility.py
+   ```
+
+   **TensorFlow Support (for Neural Network Inference Plugin):**
+   ```bash
+   # Install TensorFlow for advanced neural network-based inference
+   pip install -r requirements-tensorflow.txt
+   ```
 
 5. Copy environment configuration:
 ```bash

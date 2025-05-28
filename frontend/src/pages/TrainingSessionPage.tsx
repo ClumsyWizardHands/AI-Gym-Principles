@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/api/endpoints'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { TrainingProgressDashboard } from '@/components/visualizations'
 
 export function TrainingSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
@@ -18,7 +18,6 @@ export function TrainingSessionPage() {
 
   const {
     isConnected,
-    statusUpdates,
     principles,
     actions,
   } = useWebSocket(sessionId || null)
@@ -28,6 +27,28 @@ export function TrainingSessionPage() {
       navigate(`/reports/${sessionId}`)
     }
   }, [status?.status, sessionId, navigate])
+
+  // Calculate current behavioral entropy from latest actions
+  const currentBehavioralEntropy = useMemo(() => {
+    if (actions.length === 0) return 0
+    
+    // Simple entropy calculation based on action diversity
+    const actionCounts: Record<string, number> = {}
+    actions.forEach(action => {
+      const key = `${action.action}-${action.decision}`
+      actionCounts[key] = (actionCounts[key] || 0) + 1
+    })
+    
+    const total = actions.length
+    let entropy = 0
+    Object.values(actionCounts).forEach(count => {
+      const p = count / total
+      if (p > 0) entropy -= p * Math.log2(p)
+    })
+    
+    // Normalize to 0-1 range (assuming max entropy of 5 bits)
+    return Math.min(entropy / 5, 1)
+  }, [actions])
 
   if (!sessionId) {
     return <div>Invalid session ID</div>
@@ -60,12 +81,6 @@ export function TrainingSessionPage() {
     )
   }
 
-  const progressData = statusUpdates.map((update, index) => ({
-    time: index,
-    progress: update.progress * 100,
-    scenarios: update.scenarios_completed
-  }))
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -82,126 +97,13 @@ export function TrainingSessionPage() {
         </div>
       </div>
 
-      {/* Progress Overview */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="bg-white p-6 rounded-lg shadow-soft">
-          <h3 className="text-sm font-medium text-gray-500">Progress</h3>
-          <div className="mt-2">
-            <div className="flex items-baseline">
-              <p className="text-2xl font-semibold text-gray-900">
-                {Math.round(status.progress * 100)}%
-              </p>
-              <p className="ml-2 text-sm text-gray-500">
-                {status.scenarios_completed} / {status.scenarios_total}
-              </p>
-            </div>
-            <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-primary-600 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${status.progress * 100}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-soft">
-          <h3 className="text-sm font-medium text-gray-500">Principles Discovered</h3>
-          <p className="mt-2 text-2xl font-semibold text-gray-900">
-            {principles.length}
-          </p>
-          <p className="mt-1 text-sm text-gray-500">
-            {principles.length > 0 ? 'Analyzing patterns...' : 'Gathering data...'}
-          </p>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-soft">
-          <h3 className="text-sm font-medium text-gray-500">Actions Recorded</h3>
-          <p className="mt-2 text-2xl font-semibold text-gray-900">
-            {actions.length}
-          </p>
-          <p className="mt-1 text-sm text-gray-500">
-            Real-time tracking
-          </p>
-        </div>
-      </div>
-
-      {/* Progress Chart */}
-      {progressData.length > 0 && (
-        <div className="bg-white p-6 rounded-lg shadow-soft">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Progress Over Time</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={progressData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="time" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
-              <Tooltip />
-              <Line 
-                type="monotone" 
-                dataKey="progress" 
-                stroke="#0ea5e9" 
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Live Feed */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Recent Actions */}
-        <div className="bg-white rounded-lg shadow-soft">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">Recent Actions</h3>
-          </div>
-          <div className="max-h-96 overflow-y-auto">
-            {actions.length > 0 ? (
-              <div className="divide-y divide-gray-200">
-                {actions.slice(-10).reverse().map((action, index) => (
-                  <div key={index} className="px-6 py-3">
-                    <p className="text-sm font-medium text-gray-900">{action.action}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Context: {action.context} • Decision: {action.decision}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="px-6 py-12 text-center">
-                <p className="text-sm text-gray-500">Waiting for actions...</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Discovered Principles */}
-        <div className="bg-white rounded-lg shadow-soft">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-medium text-gray-900">Discovered Principles</h3>
-          </div>
-          <div className="max-h-96 overflow-y-auto">
-            {principles.length > 0 ? (
-              <div className="divide-y divide-gray-200">
-                {principles.map((principle, index) => (
-                  <div key={index} className="px-6 py-3">
-                    <p className="text-sm font-medium text-gray-900">
-                      {principle.principle.name}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Strength: {(principle.principle.strength * 100).toFixed(0)}% • 
-                      Evidence: {principle.principle.evidence_count}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="px-6 py-12 text-center">
-                <p className="text-sm text-gray-500">No principles discovered yet</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Training Progress Dashboard */}
+      <TrainingProgressDashboard 
+        status={status}
+        actions={actions}
+        principlesDiscovered={principles}
+        behavioralEntropy={currentBehavioralEntropy}
+      />
 
       {/* Action Buttons */}
       {status.status === 'failed' && (

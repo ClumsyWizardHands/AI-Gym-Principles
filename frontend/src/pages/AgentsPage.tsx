@@ -170,6 +170,116 @@ export function AgentsPage() {
             </p>
           </div>
         )
+      case 'http':
+        return (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Endpoint URL</label>
+              <input
+                type="text"
+                value={formData.config.endpoint_url || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  config: { ...formData.config, endpoint_url: e.target.value }
+                })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                placeholder="http://localhost:8000/chat"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Method</label>
+                <select
+                  value={formData.config.method || 'POST'}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    config: { ...formData.config, method: e.target.value }
+                  })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                >
+                  <option value="POST">POST</option>
+                  <option value="GET">GET</option>
+                  <option value="PUT">PUT</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Timeout (seconds)</label>
+                <input
+                  type="number"
+                  value={formData.config.timeout || 30}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    config: { ...formData.config, timeout: parseInt(e.target.value) }
+                  })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  min="1"
+                  max="300"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Request Format</label>
+                <select
+                  value={formData.config.request_format || 'json'}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    config: { ...formData.config, request_format: e.target.value }
+                  })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                >
+                  <option value="json">JSON</option>
+                  <option value="form">Form Data</option>
+                  <option value="text">Plain Text</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Response Format</label>
+                <select
+                  value={formData.config.response_format || 'json'}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    config: { ...formData.config, response_format: e.target.value }
+                  })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                >
+                  <option value="json">JSON</option>
+                  <option value="text">Plain Text</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Authorization Token (optional)</label>
+              <input
+                type="text"
+                value={formData.config.auth_token || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  config: { ...formData.config, auth_token: e.target.value }
+                })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                placeholder="Bearer token..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Custom Headers (optional)</label>
+              <textarea
+                value={JSON.stringify(formData.config.headers || {}, null, 2)}
+                onChange={(e) => {
+                  try {
+                    const headers = JSON.parse(e.target.value)
+                    setFormData({ ...formData, config: { ...formData.config, headers } })
+                  } catch {
+                    // Invalid JSON, don't update
+                  }
+                }}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm font-mono"
+                rows={3}
+                placeholder='{"X-Custom-Header": "value"}'
+              />
+            </div>
+          </>
+        )
       default:
         return null
     }

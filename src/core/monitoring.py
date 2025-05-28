@@ -67,9 +67,21 @@ class MetricSnapshot:
     
     
 class MetricsCollector:
-    """Centralized metrics collection and alerting."""
+    """Collects and exposes metrics for monitoring."""
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
     
     def __init__(self):
+        # Only initialize once
+        if MetricsCollector._initialized:
+            return
+        MetricsCollector._initialized = True
         # Prometheus metrics
         self.counters: Dict[str, Counter] = {}
         self.gauges: Dict[str, Gauge] = {}

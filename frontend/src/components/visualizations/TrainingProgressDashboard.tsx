@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  LineChart,
-  Line,
   AreaChart,
   Area,
   BarChart,
@@ -203,7 +201,7 @@ export const TrainingProgressDashboard: React.FC<TrainingProgressDashboardProps>
               fill="#8884d8"
               dataKey="value"
             >
-              {contextData.map((entry, index) => (
+              {contextData.map((_entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>

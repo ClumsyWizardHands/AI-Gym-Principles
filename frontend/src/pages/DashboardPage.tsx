@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { api } from '@/api/endpoints'
 import { DashboardStats } from '@/api/types'
 import { 
-  LineChart, Line, AreaChart, Area, BarChart, Bar, 
+  AreaChart, Area, BarChart, Bar, 
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts'
 

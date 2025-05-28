@@ -156,22 +156,23 @@ class TrainingReport(BaseModel):
 # Dependency for API key validation
 async def validate_api_key(request: Request) -> str:
     """Validate API key from request."""
-    # In development mode, allow access without API key for frontend
+    # In development mode, accept any API key and add it to the store
     if settings.ENVIRONMENT == "development":
-        # Check if request is from frontend (no API key)
         api_key = request.headers.get("X-API-Key")
         if not api_key:
-            # Create a dev API key if needed
-            dev_key = "sk-dev-key"
-            if dev_key not in api_keys:
-                api_keys[dev_key] = {
-                    "created_at": datetime.utcnow(),
-                    "expires_at": None,
-                    "usage_limit": None,
-                    "usage_count": 0
-                }
-            request.state.api_key = dev_key
-            return dev_key
+            api_key = "sk-dev-key"
+        
+        # Add the API key to our store if it doesn't exist
+        if api_key not in api_keys:
+            api_keys[api_key] = {
+                "created_at": datetime.utcnow(),
+                "expires_at": None,
+                "usage_limit": None,
+                "usage_count": 0
+            }
+        
+        request.state.api_key = api_key
+        return api_key
     
     api_key = request.headers.get("X-API-Key")
     if not api_key:

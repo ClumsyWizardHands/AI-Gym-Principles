@@ -25,6 +25,7 @@ from src.api.middleware import (
     LoggingMiddleware,
     TimeoutMiddleware
 )
+from starlette.middleware.base import BaseHTTPMiddleware
 from src.api.training_integration import (
     initialize_training_manager,
     shutdown_training_manager
@@ -92,21 +93,60 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None
 )
 
-# Add CORS middleware
-if settings.ENABLE_CORS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# # Custom CORS middleware to ensure headers are set  # COMMENTED OUT - Removing all CORS
+# class CustomCORSMiddleware(BaseHTTPMiddleware):
+#     async def dispatch(self, request: Request, call_next):
+#         response = await call_next(request)
+#         origin = request.headers.get("origin")
+#         if origin and settings.ENVIRONMENT == "development":
+#             response.headers["Access-Control-Allow-Origin"] = origin
+#             response.headers["Access-Control-Allow-Credentials"] = "true"
+#             response.headers["Access-Control-Allow-Methods"] = "*"
+#             response.headers["Access-Control-Allow-Headers"] = "*"
+#         return response
 
-# Add custom middleware
-app.add_middleware(TimeoutMiddleware, timeout=300)  # 5 minute timeout
-app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
-app.add_middleware(RequestIdMiddleware)
+# Add custom middleware first (they execute in reverse order)
 app.add_middleware(LoggingMiddleware)
+app.add_middleware(RequestIdMiddleware)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+app.add_middleware(TimeoutMiddleware, timeout=300)  # 5 minute timeout
+# app.add_middleware(CustomCORSMiddleware)  # COMMENTED OUT - Removing all CORS
+
+# Minimal, hardcoded CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Origin of your frontend
+        "http://localhost:5174",  # Alternate port for frontend
+        "http://127.0.0.1:5173",  # IP address variant for frontend origin
+        "http://127.0.0.1:5174"   # IP address variant for alternate port
+    ],
+    allow_credentials=True,      # MUST be True for requests with credentials (cookies, auth headers)
+    allow_methods=["*"],         # Allows all methods (GET, POST, PUT, DELETE, OPTIONS, etc.)
+    allow_headers=["*"]          # Allows all headers (Content-Type, Authorization, etc.)
+)
+
+# # Add CORS middleware last so it processes first  # COMMENTED OUT - Removing all CORS
+# if settings.ENABLE_CORS:
+#     # For development, be more permissive
+#     if settings.ENVIRONMENT == "development":
+#         app.add_middleware(
+#             CORSMiddleware,
+#             allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"],
+#             allow_credentials=True,
+#             allow_methods=["*"],
+#             allow_headers=["*"],
+#             expose_headers=["*"],
+#         )
+#     else:
+#         app.add_middleware(
+#             CORSMiddleware,
+#             allow_origins=settings.CORS_ORIGINS,
+#             allow_credentials=True,
+#             allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+#             allow_headers=["Content-Type", "X-API-Key", "X-Request-ID", "Authorization"],
+#             expose_headers=["X-Request-ID", "X-Process-Time"],
+#         )
 
 
 # Exception handlers
@@ -223,6 +263,7 @@ app.include_router(plugin_router)  # Plugin routes already have /api/plugins pre
 
 # Add WebSocket endpoint
 app.add_websocket_route("/ws/training/{session_id}", websocket_endpoint)
+
 
 
 if __name__ == "__main__":

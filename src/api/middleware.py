@@ -19,6 +19,10 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     """Add unique request ID to each request."""
     
     async def dispatch(self, request: Request, call_next):
+        # Skip for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+            
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
         
@@ -32,6 +36,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     """Log all requests and responses."""
     
     async def dispatch(self, request: Request, call_next):
+        # Skip logging for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+            
         start_time = time.time()
         request_id = getattr(request.state, "request_id", "unknown")
         
@@ -74,6 +82,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.request_counts: Dict[str, list] = defaultdict(list)
         
     async def dispatch(self, request: Request, call_next):
+        # Skip rate limiting for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+            
         # Skip rate limiting for health check and metrics
         if request.url.path in ["/health", "/metrics"]:
             return await call_next(request)
@@ -126,6 +138,10 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
         self.timeout = timeout
         
     async def dispatch(self, request: Request, call_next):
+        # Skip timeout for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+            
         # Skip timeout for training endpoints which may take longer
         if request.url.path.startswith("/api/training"):
             return await call_next(request)

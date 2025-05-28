@@ -364,7 +364,7 @@ class TrainingSessionManager:
                     error=str(e)
                 )
     
-    @monitor_performance
+    @monitor_performance("scenario_generation_time")
     async def create_session(
         self,
         agent_id: str,
@@ -376,10 +376,7 @@ class TrainingSessionManager:
         branching_types: List[str] = None
     ) -> str:
         """Create a new training session."""
-        # Check concurrent session limit
-        if not self.session_semaphore.locked():
-            raise RuntimeError("Maximum concurrent sessions reached")
-        
+        # Acquire semaphore for concurrent session limit
         async with self.session_semaphore:
             session_id = str(uuid.uuid4())
             

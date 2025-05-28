@@ -98,6 +98,18 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = Field(default="HS256")
     JWT_EXPIRATION_MINUTES: int = Field(default=60)
     
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS origins from comma-separated string or list."""
+        if isinstance(v, str):
+            # Handle comma-separated string
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        elif isinstance(v, list):
+            return v
+        else:
+            return []
+    
     # Development Settings
     DEBUG_MODE: bool = Field(default=False)
     PROFILE_PERFORMANCE: bool = Field(default=False)

@@ -19,7 +19,9 @@ This guide will walk you through deploying your AI Principles Gym to Railway wit
 
 1. Click **"Deploy from GitHub repo"**
 2. Select **"AI-Gym-Principles"** repository
-3. Railway will auto-detect it's a Python app
+3. **IMPORTANT**: Click on the service settings (gear icon)
+4. Set **Root Directory** to: `ai-principles-gym`
+5. Click **Save**
 
 **Environment Variables** - Click on the service, then "Variables":
 ```

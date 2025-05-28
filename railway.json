@@ -1,30 +1,12 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "buildCommand": "cd ai-principles-gym && pip install -r requirements.txt"
   },
   "deploy": {
-    "numReplicas": 1,
-    "startCommand": "cd backend && uvicorn src.api.app:app --host 0.0.0.0 --port $PORT",
+    "startCommand": "cd ai-principles-gym && uvicorn src.api.app:app --host 0.0.0.0 --port $PORT",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
-  },
-  "services": {
-    "backend": {
-      "build": {
-        "buildCommand": "pip install -r requirements.txt"
-      },
-      "deploy": {
-        "startCommand": "uvicorn src.api.app:app --host 0.0.0.0 --port $PORT"
-      }
-    },
-    "frontend": {
-      "build": {
-        "buildCommand": "cd frontend && npm install && npm run build"
-      },
-      "deploy": {
-        "startCommand": "cd frontend && npm run preview -- --port $PORT --host 0.0.0.0"
-      }
-    }
   }
 }

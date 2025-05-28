@@ -5,12 +5,12 @@ Railway deployment issues and configuration.
 
 ## Recent Changes
 1. Fixed Railway deployment issues:
-   - Updated nixpacks.toml to ensure pip is available:
-     - Added `python -m ensurepip` step
-     - Changed all pip commands to use `python -m pip`
-   - Updated railway.json to use `python -m pip` and `python -m uvicorn`
-   - Updated Procfile to use `python -m uvicorn`
-   - These changes fix the "pip: command not found" error during Railway build
+   - Updated nixpacks.toml to use virtual environment:
+     - Creates venv at `/opt/venv` to avoid Nix's externally managed Python
+     - Activates venv for pip installations
+     - Uses venv Python for running the application
+   - This fixes the "externally-managed-environment" error from Nix
+   - Previous attempts with `python -m ensurepip` failed due to Nix restrictions
 
 2. Previous plugin system fixes:
    - Removed references to non-existent `Pattern` and `ScenarioContext` types

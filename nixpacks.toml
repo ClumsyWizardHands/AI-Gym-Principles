@@ -2,7 +2,7 @@
 nixPkgs = ["python311", "postgresql"]
 
 [phases.install]
-cmds = ["cd ai-principles-gym && pip install -r requirements.txt"]
+cmds = ["pip install -r requirements.txt"]
 
 [start]
-cmd = "cd ai-principles-gym && uvicorn src.api.app:app --host 0.0.0.0 --port $PORT"
+cmd = "uvicorn src.api.app:app --host 0.0.0.0 --port $PORT"

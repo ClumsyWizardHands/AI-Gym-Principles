@@ -93,60 +93,30 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None
 )
 
-# # Custom CORS middleware to ensure headers are set  # COMMENTED OUT - Removing all CORS
-# class CustomCORSMiddleware(BaseHTTPMiddleware):
-#     async def dispatch(self, request: Request, call_next):
-#         response = await call_next(request)
-#         origin = request.headers.get("origin")
-#         if origin and settings.ENVIRONMENT == "development":
-#             response.headers["Access-Control-Allow-Origin"] = origin
-#             response.headers["Access-Control-Allow-Credentials"] = "true"
-#             response.headers["Access-Control-Allow-Methods"] = "*"
-#             response.headers["Access-Control-Allow-Headers"] = "*"
-#         return response
+# IMPORTANT: Middleware are executed in REVERSE order of addition
+# So the last middleware added is the first to execute
 
-# Add custom middleware first (they execute in reverse order)
+# Add custom middleware first (they will execute after CORS)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 app.add_middleware(TimeoutMiddleware, timeout=300)  # 5 minute timeout
-# app.add_middleware(CustomCORSMiddleware)  # COMMENTED OUT - Removing all CORS
 
-# Minimal, hardcoded CORS configuration
+# Add CORS middleware LAST so it executes FIRST
+# This is critical for handling preflight OPTIONS requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Origin of your frontend
-        "http://localhost:5174",  # Alternate port for frontend
-        "http://127.0.0.1:5173",  # IP address variant for frontend origin
-        "http://127.0.0.1:5174"   # IP address variant for alternate port
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:5174",  # Alternate port
+        "http://127.0.0.1:5173",  # IP address variant
+        "http://127.0.0.1:5174"   # IP address variant
     ],
-    allow_credentials=True,      # MUST be True for requests with credentials (cookies, auth headers)
-    allow_methods=["*"],         # Allows all methods (GET, POST, PUT, DELETE, OPTIONS, etc.)
-    allow_headers=["*"]          # Allows all headers (Content-Type, Authorization, etc.)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
 )
-
-# # Add CORS middleware last so it processes first  # COMMENTED OUT - Removing all CORS
-# if settings.ENABLE_CORS:
-#     # For development, be more permissive
-#     if settings.ENVIRONMENT == "development":
-#         app.add_middleware(
-#             CORSMiddleware,
-#             allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"],
-#             allow_credentials=True,
-#             allow_methods=["*"],
-#             allow_headers=["*"],
-#             expose_headers=["*"],
-#         )
-#     else:
-#         app.add_middleware(
-#             CORSMiddleware,
-#             allow_origins=settings.CORS_ORIGINS,
-#             allow_credentials=True,
-#             allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-#             allow_headers=["Content-Type", "X-API-Key", "X-Request-ID", "Authorization"],
-#             expose_headers=["X-Request-ID", "X-Process-Time"],
-#         )
 
 
 # Exception handlers

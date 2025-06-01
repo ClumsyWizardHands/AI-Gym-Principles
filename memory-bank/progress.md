@@ -1,45 +1,55 @@
 # Progress Log
 
-## Session: 2025-05-28
+## June 1, 2025
 
-### Task: Fix CORS and Authentication Issues
+### AI Agent Integration Work
 
 #### Completed
-1. **CORS Issue Fixed**:
-   - Removed all conflicting CORS implementations (FastAPI's CORSMiddleware, custom CustomCORSMiddleware)
-   - Implemented a single, minimal hardcoded CORS middleware in `src/api/middleware.py`
-   - Explicitly allowed origins: `http://localhost:5173` and `http://127.0.0.1:5173`
-   - All CORS preflight requests now return 200 OK
+- ✅ Created HTTP adapter wrapper for Adaptive Bridge Builder agent
+- ✅ Implemented JSON-RPC 2.0 protocol translation
+- ✅ Successfully tested basic connectivity with the agent
+- ✅ Fixed multiple database-related bugs:
+  - Fixed `get_session` → `session` method name issue
+  - Fixed database method names (get_agent_profile → get_agent, etc.)
+  - Fixed parameter passing (removed db session parameter)
+  - Ran database migrations
+- ✅ Registered wrapped agent multiple times (latest ID: 7c8aa555-c4ca-4c3c-b7dc-783325378812)
 
-2. **Authentication Issue Fixed**:
-   - Modified `src/api/middleware.py` to accept any API key in development mode
-   - API keys are automatically added to the in-memory store upon first use
-   - Successfully tested authentication flow from login to dashboard
+#### In Progress
+- 🔄 Debugging training session startup issues
+- 🔄 Still encountering 500 errors when starting training
+- 🔄 Database schema inconsistencies being resolved
 
-3. **Training Backend Error Fixed**:
-   - Fixed `TypeError: monitor_performance.<locals>.decorator() got an unexpected keyword argument 'agent_id'`
-   - Added missing metric name argument to `@monitor_performance` decorator in `training_integration.py`
-   - Changed from `@monitor_performance` to `@monitor_performance("scenario_generation_time")`
+#### Blocked
+- ❌ Cannot start training session due to persistent errors
+- ❌ Need to investigate latest error (request ID: 4d867a91-5749-4df1-8bb1-81400e9eb635)
 
-#### Testing Results
-- ✅ Frontend loads without CORS errors
-- ✅ API key authentication works
-- ✅ Dashboard page loads successfully
-- ✅ API calls to `/api/agents` and `/api/training/sessions` succeed
-- ✅ Agent registration works
-- ✅ Training start endpoint fixed (decorator error resolved)
+### Files Created
+1. `decision_wrapper.py` - HTTP adapter wrapper for Adaptive Bridge Builder
+2. `register_decision_wrapper.py` - Agent registration script
+3. `start_training_decision_wrapper.py` - Training session startup script
+4. `test_decision_wrapper.py` - Testing script
+5. `fix_database_issue.py` - First database fix script
+6. `fix_database_issue2.py` - Second database fix script
+7. `fix_database_issue3.py` - Third database fix script
 
-#### Current Status
-- Both frontend and backend servers running
-- CORS and authentication fully functional
-- Training functionality should now work without backend errors
+### Key Learnings
+1. The gym's database methods don't expect session parameters - they manage sessions internally
+2. Method names have changed between versions (get_session → session, get_agent_profile → get_agent)
+3. Database schema needs to be kept in sync with model definitions
+4. The HTTP adapter pattern works well for integrating external agents
 
-### Next Steps
-1. Test the complete training flow from agent registration to training completion
-2. Monitor for any additional errors during actual training sessions
-3. Consider implementing proper error boundaries in the frontend for better error handling
+### Next Session Priorities
+1. Fix remaining database/training session startup issues
+2. Complete full training session with Adaptive Bridge Builder
+3. Document the integration process
+4. Create a comprehensive integration guide for the agent
 
-### Technical Debt
-- The hardcoded CORS configuration should be moved to environment variables for production
-- Consider implementing a more robust authentication system for production use
-- The monitor_performance decorator could use better error handling for missing arguments
+## Previous Sessions
+
+### Initial Setup (Earlier)
+- Set up AI Principles Gym project structure
+- Implemented core training infrastructure
+- Created scenario engines and behavioral tracking
+- Built FastAPI-based REST API
+- Integrated WebSocket support for real-time updates

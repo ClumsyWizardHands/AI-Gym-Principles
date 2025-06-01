@@ -22,7 +22,7 @@ if not exist "data" mkdir data
 
 REM Start backend server in a new window
 echo Starting backend server on http://localhost:8000
-start "AI Principles Gym - Backend" cmd /k "python -m uvicorn src.api.app:app --reload --host 0.0.0.0 --port 8000"
+start "AI Principles Gym - Backend" cmd /k "python -m uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
 
 REM Wait for backend to start
 echo Waiting for backend to start...

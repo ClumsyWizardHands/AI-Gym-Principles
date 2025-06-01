@@ -1,50 +1,81 @@
 # Active Context
 
-## Current Focus
-Railway deployment issues and configuration.
+## Current Work
+We are working on connecting the AI Gym to the user's Adaptive Bridge Builder agent for training. The agent has requested specific information about the gym's API and integration capabilities.
 
-## Recent Changes
-0. Security fix:
-   - Removed exposed OpenAI API key from `.env` file
-   - OPENAI_API_KEY field now properly empty
-   - `.env` is already in `.gitignore` to prevent tracking
+## Recent Activities
+1. Created HTTP adapter wrapper (`decision_wrapper.py`) for the Adaptive Bridge Builder agent
+   - Handles JSON-RPC 2.0 protocol translation
+   - Maps between gym's training scenario format and agent's decision request format
+   - Successfully tested basic connectivity
 
-1. Fixed Railway deployment issues:
-   - Updated nixpacks.toml to use virtual environment:
-     - Creates venv at `/opt/venv` to avoid Nix's externally managed Python
-     - Activates venv for pip installations
-     - Uses venv Python for running the application
-   - Updated railway.json:
-     - Removed buildCommand (let nixpacks.toml handle builds)
-     - Updated startCommand to use venv Python
-   - This fixes the "externally-managed-environment" error from Nix
-   - Note: Railway may cache old builds - may need to clear cache or redeploy
+2. Fixed multiple database-related issues in the training integration:
+   - Fixed `get_session` → `session` method name
+   - Fixed database method calls to use correct names (get_agent, create_agent, etc.)
+   - Fixed parameter passing issues (removed db session parameter from DatabaseManager methods)
+   - Ran database migrations to update schema
 
-2. Previous plugin system fixes:
-   - Removed references to non-existent `Pattern` and `ScenarioContext` types
-   - Updated Action property references from `action_taken` to `action_type`
-   - Updated Action property references from `context` to `decision_context`
-   - Fixed neural_network_inference.py to return dictionaries instead of Pattern objects
-   - Fixed comprehensive_report_analysis.py to handle patterns as dictionaries
-   - All plugins now properly aligned with the actual model structure
+3. Registered the wrapped agent with the gym multiple times due to restarts
 
-3. Key architectural decisions:
-   - Patterns are represented as dictionaries, not as a separate model class
-   - Actions use `action_type` and `decision_context` properties
-   - Plugin system returns dictionaries for flexibility
+## Current Issues
+- Still encountering 500 errors when trying to start training sessions
+- Database schema and code may still have inconsistencies
+- Need to investigate the latest error (request ID: 4d867a91-5749-4df1-8bb1-81400e9eb635)
 
 ## Next Steps
-1. Deploy to Railway with the fixed configuration
-2. Create a simple test script to demonstrate LLM integration
-3. Verify all adapters work properly
-4. Test with an AI agent
+1. Investigate and fix the remaining training session startup issues
+2. Complete the integration with the Adaptive Bridge Builder agent
+3. Run a full training session to test the integration
+4. Gather the requested information for the agent's checklist
 
-## Known Issues
-- TensorFlow is an optional dependency for neural_network_inference plugin
-- Some plugins may need further testing with real data
+## Integration Information Gathered
+Based on the agent's request, here's what we know about the AI Gym:
 
-## Testing Strategy
-- Start with basic LLM adapter testing
-- Verify scenario execution with simple test cases
-- Test plugin integration with mock data
-- Finally test with real AI agent integration
+1. **Basic Agent Information**
+   - Agent name: AI Principles Gym
+   - Purpose: Training AI agents to discover behavioral principles through scenarios
+   - Framework: FastAPI-based REST API with WebSocket support
+   - Language: Python
+
+2. **Communication Protocol & Format**
+   - Protocol: HTTP REST API
+   - Format: JSON
+   - Endpoints: `/api/agents/register`, `/api/training/start`, etc.
+   - Standard REST conventions
+
+3. **Connection Details**
+   - Base URL: `http://localhost:8000`
+   - Methods: POST for registration and training
+   - Headers: `Content-Type: application/json`
+   - Port: 8000
+
+4. **Agent Registration Format**
+   ```json
+   {
+     "name": "Agent Name",
+     "framework": "http",
+     "config": {
+       "endpoint_url": "http://agent-endpoint",
+       "method": "POST",
+       "headers": {},
+       "request_format": "json"
+     }
+   }
+   ```
+
+5. **Training Session Format**
+   ```json
+   {
+     "agent_id": "uuid",
+     "num_scenarios": 10,
+     "scenario_types": ["trust_dilemma", "resource_allocation"]
+   }
+   ```
+
+## Files Created/Modified
+- `decision_wrapper.py` - HTTP adapter wrapper
+- `register_decision_wrapper.py` - Registration script
+- `start_training_decision_wrapper.py` - Training startup script
+- `test_decision_wrapper.py` - Testing script
+- `src/api/training_integration.py` - Fixed database method calls
+- Multiple fix scripts for database issues

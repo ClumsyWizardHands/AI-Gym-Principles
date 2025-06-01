@@ -390,14 +390,11 @@ class TrainingSessionManager:
                 
                 # Get or create behavior tracker
                 if agent_id not in self._behavior_trackers:
-                    async with self.db_manager.get_session() as db:
+                    async with self.db_manager.session() as db:
                         # Get or create agent profile
-                        agent_profile = await self.db_manager.get_agent_profile(
-                            db, agent_id
-                        )
+                        agent_profile = await self.db_manager.get_agent(agent_id)
                         if not agent_profile:
-                            agent_profile = await self.db_manager.create_agent_profile(
-                                db,
+                            agent_profile = await self.db_manager.create_agent(
                                 agent_id=agent_id,
                                 framework=framework,
                                 config=agent_config["config"]
@@ -528,10 +525,9 @@ class TrainingSessionManager:
             principles = await session.inference_engine.get_current_principles()
             
             # Save principles to database
-            async with self.db_manager.get_session() as db:
+            async with self.db_manager.session() as db:
                 for principle in principles:
-                    await self.db_manager.save_principle(
-                        db,
+                    await self.db_manager.upsert_principle(
                         agent_id=session.agent_id,
                         principle=principle,
                         session_id=session_id
@@ -651,9 +647,8 @@ class TrainingSessionManager:
             )
         
         # Get principles from database
-        async with self.db_manager.get_session() as db:
+        async with self.db_manager.session() as db:
             principles = await self.db_manager.get_agent_principles(
-                db,
                 session.agent_id
             )
         

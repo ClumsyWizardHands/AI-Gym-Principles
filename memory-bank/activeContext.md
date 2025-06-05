@@ -1,81 +1,176 @@
 # Active Context
 
-## Current Work
-We are working on connecting the AI Gym to the user's Adaptive Bridge Builder agent for training. The agent has requested specific information about the gym's API and integration capabilities.
+## Current Status (June 4, 2025, 2:24 PM)
 
-## Recent Activities
-1. Created HTTP adapter wrapper (`decision_wrapper.py`) for the Adaptive Bridge Builder agent
-   - Handles JSON-RPC 2.0 protocol translation
-   - Maps between gym's training scenario format and agent's decision request format
-   - Successfully tested basic connectivity
+### Adaptive Bridge Builder Testing
+We're attempting to test the Adaptive Bridge Builder agent with the AI Principles Gym, but encountering protocol compatibility issues.
 
-2. Fixed multiple database-related issues in the training integration:
-   - Fixed `get_session` → `session` method name
-   - Fixed database method calls to use correct names (get_agent, create_agent, etc.)
-   - Fixed parameter passing issues (removed db session parameter from DatabaseManager methods)
-   - Ran database migrations to update schema
+### Issue Summary
+1. **Protocol Mismatch**: The Adaptive Bridge Builder agent expects JSON-RPC format, but the AI Principles Gym sends direct HTTP POST requests with scenario data
+2. **Method Not Found**: The agent returns "Method not found" for the "process" method that the gym tries to call
+3. **Bridge Adapter Created**: Built a bridge adapter (`gym_agent_bridge.py`) running on port 8085 to translate between protocols
+4. **Still Getting 500 Errors**: Even with the bridge, training sessions fail to start with 500 errors
 
-3. Registered the wrapped agent with the gym multiple times due to restarts
+### Current State
+- AI Principles Gym: Running on port 8000 ✅
+- Adaptive Bridge Builder Agent: Running on port 8080 ✅
+- Bridge Adapter: Running on port 8085 ✅
+- Bridge registered as agent in gym ✅
+- Training still failing with 500 errors ❌
 
-## Current Issues
-- Still encountering 500 errors when trying to start training sessions
-- Database schema and code may still have inconsistencies
-- Need to investigate the latest error (request ID: 4d867a91-5749-4df1-8bb1-81400e9eb635)
+### Next Steps
+1. Check the gym's logs to see the actual error causing the 500
+2. Test the bridge adapter directly with a mock request
+3. Consider using a mock adapter instead to simplify testing
+4. Or focus on fixing the specific error in the training integration
 
-## Next Steps
-1. Investigate and fix the remaining training session startup issues
-2. Complete the integration with the Adaptive Bridge Builder agent
-3. Run a full training session to test the integration
-4. Gather the requested information for the agent's checklist
+## Previous Status (June 4, 2025, 1:39 PM)
 
-## Integration Information Gathered
-Based on the agent's request, here's what we know about the AI Gym:
+### What We Just Completed
+Fixed the HTTP Agent configuration issue for training integration.
 
-1. **Basic Agent Information**
-   - Agent name: AI Principles Gym
-   - Purpose: Training AI agents to discover behavioral principles through scenarios
-   - Framework: FastAPI-based REST API with WebSocket support
-   - Language: Python
+### Resolution
+- **Issue**: When registering an HTTP agent, the system was throwing "HTTP endpoint URL not specified" error during adapter creation
+- **Root Cause**: The agent registration wasn't validating or ensuring HTTP agents had the required endpoint URL in their config
+- **Solution**: 
+  1. Added validation in `register_agent` endpoint to ensure HTTP agents have either 'endpoint_url' or 'http_adapter_url'
+  2. Normalized configuration to always use 'endpoint_url' internally
+  3. Added URL format validation (must start with http:// or https://)
+  4. Updated `AgentAdapterFactory.create_adapter` to handle both keys with clear error messages
+  5. Added logging when creating HTTP adapters
 
-2. **Communication Protocol & Format**
-   - Protocol: HTTP REST API
-   - Format: JSON
-   - Endpoints: `/api/agents/register`, `/api/training/start`, etc.
-   - Standard REST conventions
+### Files Modified
+- `src/api/routes.py` - Added HTTP agent config validation in register_agent endpoint
+- `src/api/training_integration.py` - Updated AgentAdapterFactory to handle both endpoint_url and http_adapter_url
 
-3. **Connection Details**
-   - Base URL: `http://localhost:8000`
-   - Methods: POST for registration and training
-   - Headers: `Content-Type: application/json`
-   - Port: 8000
+### Previous Status (1:03 PM)
+Fixed the agent profile retrieval issue in `training_integration.py`.
 
-4. **Agent Registration Format**
-   ```json
-   {
-     "name": "Agent Name",
-     "framework": "http",
-     "config": {
-       "endpoint_url": "http://agent-endpoint",
-       "method": "POST",
-       "headers": {},
-       "request_format": "json"
-     }
-   }
-   ```
+### Previous Resolution
+- **Issue**: The code was calling `self.db_manager.get_agent(agent_id)` inside a session context, which would create nested sessions
+- **Root Cause**: The `get_agent()` method in DatabaseManager creates its own session internally
+- **Solution**: 
+  1. Added a new method `get_agent_by_id(agent_id, session)` to DatabaseManager that accepts a session parameter
+  2. Updated the training_integration.py to use `get_agent_by_id(agent_id, db)` instead
+  3. Also fixed the `create_agent()` call to use the correct parameter names (`name` and `metadata`)
 
-5. **Training Session Format**
-   ```json
-   {
-     "agent_id": "uuid",
-     "num_scenarios": 10,
-     "scenario_types": ["trust_dilemma", "resource_allocation"]
-   }
-   ```
+### Previous Status
+Investigated the reported DatabaseManager session handling issue in `training_integration.py`.
 
-## Files Created/Modified
-- `decision_wrapper.py` - HTTP adapter wrapper
-- `register_decision_wrapper.py` - Registration script
-- `start_training_decision_wrapper.py` - Training startup script
-- `test_decision_wrapper.py` - Testing script
-- `src/api/training_integration.py` - Fixed database method calls
-- Multiple fix scripts for database issues
+### Previous Resolution
+- **Reported Issue**: The task indicated that line 393 of `training_integration.py` was using `self.db_manager.get_session()` 
+- **Investigation Finding**: The code is already correct and uses `self.db_manager.session()`
+- **Verification**: 
+  - Searched the entire file for session usage patterns
+  - Found 3 occurrences, all correctly using `self.db_manager.session()`
+  - The DatabaseManager class correctly defines `session()` as an async context manager
+- **Conclusion**: No fix needed - the code is already using the correct method
+
+### Previous Status
+Fixed investigation of the @monitor_performance decorator TypeError issue.
+
+### Previous Resolution
+- **Issue**: The @monitor_performance decorator was reported to cause a TypeError with keyword arguments
+- **Investigation**: Created comprehensive tests to verify decorator behavior with *args and **kwargs
+- **Finding**: The decorator is already correctly implemented in `src/core/monitoring.py`:
+  - Both `async_wrapper` and `sync_wrapper` properly accept `*args, **kwargs`
+  - They correctly pass these arguments through to the wrapped function
+  - Tests confirmed it works with positional args, keyword args, and mixed args
+- **Root Cause**: The actual issue was not with argument handling but with metric name validation
+  - The decorator enforces that the metric_name parameter must be a valid `MetricType` enum value
+  - Invalid metric names (e.g., "test_metric") cause a ValueError
+  - Valid metric names include: "inference_latency", "scenario_generation_time", "behavioral_entropy_distribution", etc.
+
+### Previous Changes Applied
+1. **Fixed SyntaxError in training_integration.py**:
+   - Error: `name '_training_manager' is used prior to global declaration`
+   - Solution: Moved `global _training_manager` declaration to the top of `get_training_manager()` function before any references to the variable
+   - File: `src/api/training_integration.py` (line ~1423)
+
+### Previous Changes (11:47 AM)
+1. **Enhanced Error Handling in start_training Endpoint**:
+   - Wrapped main logic in comprehensive try-except block
+   - Enhanced RuntimeError handling:
+     - Added `logger.exception` for full traceback logging
+     - Logs context including agent_id, framework, num_scenarios
+     - Returns 500 error with descriptive message
+   - Added general Exception handling:
+     - Captures any unexpected exceptions
+     - Uses `logger.exception` with extensive context logging
+     - Provides type-specific HTTP responses:
+       - ValueError → 400 Bad Request
+       - KeyError → 400 Bad Request  
+       - Other → 500 Internal Server Error
+     - All responses include the actual error message
+
+### Previous Changes (11:38 AM)
+1. **ScenarioEngine Validation Enhancements**:
+   - Added `_validate_scenario_instance` method to validate all required fields in scenario instances
+   - Enhanced archetype validation with type checking and better error messages
+   - Added execution state validation to check for empty IDs and already completed executions
+   - Added response validation to ensure responses are dictionaries
+   - Improved error messages to include available options when validation fails
+
+2. **Data Structure Validation**:
+   - Validates actors list structure and required fields (id, name)
+   - Validates resources dictionary structure and required fields (current, max)
+   - Validates constraints list structure and required fields (name, type, value)
+   - Validates choice_options list is non-empty with required fields (id, description)
+
+3. **Error Handling Improvements**:
+   - Wrapped scenario instance generation in try/except with RuntimeError
+   - Added checks for completed executions to prevent duplicate processing
+   - Better error messages that include valid options for invalid inputs
+
+### Previous Changes (11:31 AM)
+1. **Configuration Validation Method**: Added `_validate_config` method to `AgentAdapterFactory`:
+   - Validates configuration is a dictionary
+   - Framework-specific validation:
+     - **OpenAI**: Requires api_key (non-empty string), warns if doesn't start with "sk-"
+     - **Anthropic**: Requires api_key (non-empty string)
+     - **HTTP**: Requires endpoint_url (non-empty string starting with http:// or https://)
+     - **Custom**: Requires function_name that's registered in _custom_functions
+     - **LangChain**: Requires api_key and valid model_provider ("openai" or "anthropic")
+   - Raises descriptive `ValueError` messages for missing/invalid configurations
+
+2. **Optional Adapter Health Check**: Added connection testing after adapter creation:
+   - Checks if adapter has `test_connection` method
+   - Runs connection test and logs results
+   - Raises `RuntimeError` if test fails (with option to proceed anyway)
+   - Logs latency and success/failure status
+
+### HTTP Agent Configuration Summary
+The HTTP agent registration and adapter creation process now ensures:
+1. **Registration validation**: HTTP agents must provide endpoint_url or http_adapter_url
+2. **URL normalization**: System internally uses endpoint_url for consistency
+3. **URL format validation**: URLs must start with http:// or https://
+4. **Clear error messages**: Specific guidance on what's missing or invalid
+5. **Backward compatibility**: Accepts both endpoint_url and http_adapter_url keys
+
+### Previous Completions
+1. **Scenario Types Validation**: Validates against ScenarioArchetype enum values
+2. **Branching Types Validation**: Validates against ["trust_building", "resource_cascade"]
+3. **Branching Scenario Error Handling**: Wrapped create/present operations
+4. **BehaviorTracker start() Error Handling**: Added error handling
+5. **PrincipleInferenceEngine start() Error Handling**: Added error handling
+6. **TrainingSessionManager Database Validation**: Validates DatabaseManager in __init__
+7. **MAX_CONCURRENT_SESSIONS Validation**: Validates configuration setting
+8. **@monitor_performance Decorator**: Confirmed already correctly handles *args and **kwargs
+9. **DatabaseManager Session Method**: Confirmed code already uses correct `session()` method
+10. **Agent Profile Retrieval**: Fixed nested session issue by adding `get_agent_by_id()` method
+11. **HTTP Agent Config**: Fixed missing endpoint URL validation and handling
+
+### Key Files Modified
+- `src/api/routes.py` - Added HTTP agent config validation
+- `src/api/training_integration.py` - Updated HTTP adapter creation to handle both URL keys
+- `src/core/database.py` - Added `get_agent_by_id()` method that accepts session parameter
+- `src/core/monitoring.py` - Verified decorator implementation (no changes needed)
+
+### API Endpoints Status
+- `GET /health` - Working ✅
+- `POST /api/agents/register` - Fixed HTTP agent validation ✅
+- `GET /api/agents` - Not tested yet
+- `POST /api/training/start` - Has comprehensive error handling with detailed logging and meaningful responses
+
+### Current Task
+The HTTP agent configuration issue has been fixed. The system now properly validates and handles HTTP agent configurations during registration and training.

@@ -53,7 +53,7 @@ class AgentProfile(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     behavioral_entropy = Column(Float, default=0.0, nullable=False)
     total_actions = Column(Integer, default=0, nullable=False)
-    agent_metadata = Column(JSON, default=dict, nullable=False)
+    meta_data = Column(JSON, default=dict, nullable=False)
     
     # Relationships
     actions = relationship("Action", back_populates="agent", cascade="all, delete-orphan")
@@ -74,7 +74,7 @@ class AgentProfile(Base):
             "created_at": self.created_at.isoformat(),
             "behavioral_entropy": self.behavioral_entropy,
             "total_actions": self.total_actions,
-            "metadata": self.agent_metadata
+            "metadata": self.meta_data
         }
 
 
@@ -165,7 +165,7 @@ class Principle(Base):
     last_updated = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     # Additional metadata
-    principle_metadata = Column(JSON, default=dict, nullable=False)
+    meta_data = Column(JSON, default=dict, nullable=False)
     
     # Relationships
     agent = relationship("AgentProfile", back_populates="principles")
@@ -199,7 +199,7 @@ class Principle(Base):
             "lineage_data": self.lineage_data,
             "created_at": self.created_at.isoformat(),
             "last_updated": self.last_updated.isoformat(),
-            "metadata": self.principle_metadata
+            "metadata": self.meta_data
         }
 
 
@@ -390,7 +390,7 @@ class DatabaseManager:
             agent = AgentProfile(
                 agent_id=agent_id,
                 name=name,
-                agent_metadata=metadata or {}
+                meta_data=metadata or {}
             )
             session.add(agent)
             await session.flush()
@@ -408,6 +408,15 @@ class DatabaseManager:
                 .options(selectinload(AgentProfile.principles))
             )
             return result.scalar_one_or_none()
+    
+    async def get_agent_by_id(self, agent_id: str, session: AsyncSession) -> Optional[AgentProfile]:
+        """Get agent profile by ID using provided session."""
+        result = await session.execute(
+            select(AgentProfile)
+            .where(AgentProfile.agent_id == agent_id)
+            .options(selectinload(AgentProfile.principles))
+        )
+        return result.scalar_one_or_none()
     
     async def record_action(self, action_data: Dict[str, Any]):
         """Record an action (uses buffering for efficiency)."""

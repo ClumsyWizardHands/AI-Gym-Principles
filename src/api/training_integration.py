@@ -216,9 +216,26 @@ class AgentAdapterFactory:
             
             elif framework == "http":
                 # Create HTTP adapter
-                endpoint_url = config.get("endpoint_url")
+                # Check for endpoint_url (preferred) or http_adapter_url (legacy support)
+                endpoint_url = config.get("endpoint_url") or config.get("http_adapter_url")
                 if not endpoint_url:
-                    raise ValueError("HTTP endpoint URL not specified")
+                    raise ValueError(
+                        "HTTP endpoint URL not specified. "
+                        "Config must include 'endpoint_url' or 'http_adapter_url'"
+                    )
+                
+                # Validate URL format
+                if not endpoint_url.startswith(("http://", "https://")):
+                    raise ValueError(
+                        f"Invalid HTTP endpoint URL: {endpoint_url}. "
+                        "URL must start with http:// or https://"
+                    )
+                
+                logger.info(
+                    "creating_http_adapter",
+                    endpoint_url=endpoint_url,
+                    method=config.get("method", "POST")
+                )
                 
                 return HTTPAdapter(
                     endpoint_url=endpoint_url,

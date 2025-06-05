@@ -205,6 +205,67 @@ class ScenarioEngine:
         
         logger.info("Scenario engine initialized")
     
+    def _validate_scenario_instance(self, scenario_instance: Dict[str, Any]) -> None:
+        """Validate scenario instance has required structure."""
+        required_fields = [
+            "archetype", "description", "actors", "resources", 
+            "constraints", "expected_principles", "choice_options", 
+            "stress_level", "timestamp"
+        ]
+        
+        missing_fields = []
+        for field in required_fields:
+            if field not in scenario_instance:
+                missing_fields.append(field)
+        
+        if missing_fields:
+            raise ValueError(
+                f"Scenario instance missing required fields: {missing_fields}"
+            )
+        
+        # Validate actors structure
+        if not isinstance(scenario_instance["actors"], list):
+            raise TypeError("actors must be a list")
+        
+        for actor in scenario_instance["actors"]:
+            if not isinstance(actor, dict):
+                raise TypeError("Each actor must be a dictionary")
+            if "id" not in actor or "name" not in actor:
+                raise ValueError("Each actor must have 'id' and 'name' fields")
+        
+        # Validate resources structure
+        if not isinstance(scenario_instance["resources"], dict):
+            raise TypeError("resources must be a dictionary")
+        
+        for res_name, res_data in scenario_instance["resources"].items():
+            if not isinstance(res_data, dict):
+                raise TypeError(f"Resource '{res_name}' must be a dictionary")
+            if "current" not in res_data or "max" not in res_data:
+                raise ValueError(f"Resource '{res_name}' must have 'current' and 'max' fields")
+        
+        # Validate constraints structure
+        if not isinstance(scenario_instance["constraints"], list):
+            raise TypeError("constraints must be a list")
+        
+        for constraint in scenario_instance["constraints"]:
+            if not isinstance(constraint, dict):
+                raise TypeError("Each constraint must be a dictionary")
+            if "name" not in constraint or "type" not in constraint or "value" not in constraint:
+                raise ValueError("Each constraint must have 'name', 'type', and 'value' fields")
+        
+        # Validate choice_options structure
+        if not isinstance(scenario_instance["choice_options"], list):
+            raise TypeError("choice_options must be a list")
+        
+        if len(scenario_instance["choice_options"]) == 0:
+            raise ValueError("choice_options must contain at least one choice")
+        
+        for choice in scenario_instance["choice_options"]:
+            if not isinstance(choice, dict):
+                raise TypeError("Each choice option must be a dictionary")
+            if "id" not in choice or "description" not in choice:
+                raise ValueError("Each choice option must have 'id' and 'description' fields")
+    
     async def create_scenario(
         self,
         archetype: ScenarioArchetype,
@@ -212,14 +273,38 @@ class ScenarioEngine:
         variables: Optional[Dict[str, Any]] = None
     ) -> ScenarioExecution:
         """Create a new scenario instance."""
+        # Validate archetype
+        if not isinstance(archetype, ScenarioArchetype):
+            raise TypeError(f"archetype must be a ScenarioArchetype, got {type(archetype).__name__}")
+        
         template = SCENARIO_TEMPLATES.get(archetype)
         if not template:
-            raise ValueError(f"Unknown archetype: {archetype}")
+            available_archetypes = list(SCENARIO_TEMPLATES.keys())
+            raise ValueError(
+                f"Unknown archetype: {archetype}. "
+                f"Available archetypes: {[a.value for a in available_archetypes]}"
+            )
         
-        scenario_instance = template.generate_instance(
-            stress_level=stress_level,
-            variables=variables
-        )
+        # Validate stress level
+        if not isinstance(stress_level, (int, float)) or not 0 <= stress_level <= 1:
+            raise ValueError(f"stress_level must be a float between 0 and 1, got {stress_level}")
+        
+        try:
+            scenario_instance = template.generate_instance(
+                stress_level=stress_level,
+                variables=variables
+            )
+        except Exception as e:
+            logger.error(
+                "scenario_instance_generation_failed",
+                archetype=archetype.value,
+                stress_level=stress_level,
+                error=str(e)
+            )
+            raise RuntimeError(f"Failed to generate scenario instance: {str(e)}") from e
+        
+        # Validate scenario instance structure
+        self._validate_scenario_instance(scenario_instance)
         
         execution = ScenarioExecution(
             scenario_instance=scenario_instance,
@@ -244,9 +329,16 @@ class ScenarioEngine:
         agent_id: str
     ) -> Dict[str, Any]:
         """Present scenario to agent and start execution."""
+        if not execution_id:
+            raise ValueError("execution_id cannot be empty")
+        
         execution = self.active_executions.get(execution_id)
         if not execution:
-            raise ValueError(f"Execution {execution_id} not found")
+            # Check if it's already completed
+            completed = any(e.execution_id == execution_id for e in self.completed_executions)
+            if completed:
+                raise ValueError(f"Execution {execution_id} is already completed")
+            raise ValueError(f"Execution {execution_id} not found in active executions")
         
         execution.agent_id = agent_id
         execution.state = ScenarioState.PRESENTED
@@ -279,9 +371,19 @@ class ScenarioEngine:
         response: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Record agent's response to scenario."""
+        if not execution_id:
+            raise ValueError("execution_id cannot be empty")
+        
+        if not isinstance(response, dict):
+            raise TypeError(f"response must be a dictionary, got {type(response).__name__}")
+        
         execution = self.active_executions.get(execution_id)
         if not execution:
-            raise ValueError(f"Execution {execution_id} not found")
+            # Check if it's already completed
+            completed = any(e.execution_id == execution_id for e in self.completed_executions)
+            if completed:
+                raise ValueError(f"Execution {execution_id} is already completed")
+            raise ValueError(f"Execution {execution_id} not found in active executions")
         
         execution.agent_responses.append({
             "timestamp": datetime.utcnow().isoformat(),

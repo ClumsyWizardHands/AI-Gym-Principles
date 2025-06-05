@@ -156,12 +156,23 @@ class TrainingReport(BaseModel):
 # Dependency for API key validation
 async def validate_api_key(request: Request) -> str:
     """Validate API key from request."""
+    # Always check for X-API-Key header first
+    api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        # Provide helpful error message for development
+        if settings.ENVIRONMENT == "development":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="X-API-Key header is required. For development, use the default key 'sk-dev-key'"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing API key"
+            )
+    
     # In development mode, accept any API key and add it to the store
     if settings.ENVIRONMENT == "development":
-        api_key = request.headers.get("X-API-Key")
-        if not api_key:
-            api_key = "sk-dev-key"
-        
         # Add the API key to our store if it doesn't exist
         if api_key not in api_keys:
             api_keys[api_key] = {
@@ -286,23 +297,59 @@ async def register_agent(
     agent_id = str(uuid.uuid4())
     registered_at = datetime.utcnow()
     
-    # Store agent configuration
+    # Validate and prepare framework-specific configuration
+    config = agent.config.copy()
+    
+    # Special handling for HTTP agents - ensure endpoint_url is present
+    if agent.framework == "http":
+        # Check for endpoint_url (preferred) or http_adapter_url (alternative)
+        endpoint_url = config.get("endpoint_url") or config.get("http_adapter_url")
+        if not endpoint_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="HTTP agents require 'endpoint_url' or 'http_adapter_url' in config"
+            )
+        # Normalize to endpoint_url
+        config["endpoint_url"] = endpoint_url
+        # Remove alternative key if present
+        config.pop("http_adapter_url", None)
+        
+        # Validate URL format
+        if not endpoint_url.startswith(("http://", "https://")):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="HTTP endpoint URL must start with http:// or https://"
+            )
+    
+    # Store agent configuration in memory for API operations
     registered_agents[agent_id] = {
         "id": agent_id,
         "name": agent.name,
         "framework": agent.framework,
-        "config": agent.config,
+        "config": config,  # Use validated config
         "description": agent.description,
         "registered_at": registered_at,
         "status": "active",
         "api_key": request.state.api_key  # Associate with API key
     }
     
+    # Also persist to database for training integration
+    from src.core.database import get_db_manager
+    db_manager = await get_db_manager()
+    metadata = {
+        "framework": agent.framework,
+        "config": config,  # Use validated config
+        "description": agent.description,
+        "api_key": request.state.api_key
+    }
+    await db_manager.create_agent(agent_id, agent.name, metadata)
+    
     logger.info(
         "agent_registered",
         agent_id=agent_id,
         name=agent.name,
-        framework=agent.framework
+        framework=agent.framework,
+        endpoint_url=config.get("endpoint_url") if agent.framework == "http" else None
     )
     
     return AgentRegistrationResponse(
@@ -326,16 +373,36 @@ async def start_training(
     background_tasks: BackgroundTasks
 ) -> TrainingResponse:
     """Start an asynchronous training session."""
-    # Validate agent exists
+    # First check in-memory store
     agent_data = registered_agents.get(training_request.agent_id)
+    
+    # If not in memory, check database
     if not agent_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent {training_request.agent_id} not found"
-        )
+        from src.core.database import get_db_manager
+        db_manager = await get_db_manager()
+        agent_profile = await db_manager.get_agent(training_request.agent_id)
+        
+        if agent_profile and agent_profile.metadata:
+            # Reconstruct agent data from database
+            agent_data = {
+                "id": agent_profile.agent_id,
+                "name": agent_profile.name,
+                "framework": agent_profile.metadata.get("framework"),
+                "config": agent_profile.metadata.get("config", {}),
+                "description": agent_profile.metadata.get("description"),
+                "api_key": agent_profile.metadata.get("api_key"),
+                "status": "active"
+            }
+            # Cache it in memory for future requests
+            registered_agents[training_request.agent_id] = agent_data
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {training_request.agent_id} not found"
+            )
     
     # Verify API key matches
-    if agent_data["api_key"] != request.state.api_key:
+    if agent_data.get("api_key") != request.state.api_key:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this agent"
@@ -404,7 +471,48 @@ async def start_training(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Maximum concurrent sessions reached"
             )
-        raise
+        # Log runtime errors with full context
+        logger.exception(
+            "training_start_runtime_error",
+            agent_id=training_request.agent_id,
+            error=str(e),
+            framework=agent_data.get("framework"),
+            num_scenarios=training_request.num_scenarios
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Runtime error during training setup: {str(e)}"
+        )
+    except Exception as e:
+        # Log any unexpected exceptions with full traceback
+        logger.exception(
+            "training_start_unexpected_error",
+            agent_id=training_request.agent_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            framework=agent_data.get("framework"),
+            num_scenarios=training_request.num_scenarios,
+            scenario_types=training_request.scenario_types,
+            adaptive=training_request.adaptive,
+            use_branching=training_request.use_branching
+        )
+        # Provide appropriate error responses based on exception type
+        if isinstance(e, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid configuration or parameters: {str(e)}"
+            )
+        elif isinstance(e, KeyError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing required configuration: {str(e)}"
+            )
+        else:
+            # Generic internal server error for unexpected exceptions
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unexpected error during training setup: {str(e)}"
+            )
 
 
 @router.get(

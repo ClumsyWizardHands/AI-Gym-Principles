@@ -108,6 +108,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 "rate_limit_exceeded",
                 request_id=request_id,
                 client_id=client_id,
+                client_host=request.client.host if request.client else "unknown",
+                path=request.url.path,
                 limit=self.requests_per_minute
             )
             return JSONResponse(
@@ -153,7 +155,7 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
             )
         except asyncio.TimeoutError:
             request_id = getattr(request.state, "request_id", "unknown")
-            logger.error(
+            logger.warning(
                 "request_timeout",
                 request_id=request_id,
                 path=request.url.path,

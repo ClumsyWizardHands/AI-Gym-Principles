@@ -93,30 +93,25 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None
 )
 
-# IMPORTANT: Middleware are executed in REVERSE order of addition
-# So the last middleware added is the first to execute
-
-# Add custom middleware first (they will execute after CORS)
-app.add_middleware(LoggingMiddleware)
-app.add_middleware(RequestIdMiddleware)
-app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
-app.add_middleware(TimeoutMiddleware, timeout=300)  # 5 minute timeout
-
-# Add CORS middleware LAST so it executes FIRST
-# This is critical for handling preflight OPTIONS requests
+# IMPORTANT: CORSMiddleware must be added FIRST to the app instance
+# This ensures it correctly handles preflight OPTIONS requests before
+# any other middleware can block or improperly respond to them
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:5174",  # Alternate port
-        "http://127.0.0.1:5173",  # IP address variant
-        "http://127.0.0.1:5174"   # IP address variant
-    ],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"]
 )
+
+# Add all other middleware AFTER CORSMiddleware
+# Note: Middleware are executed in REVERSE order of addition
+# Since CORS was added first, it will execute last in the chain
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(RequestIdMiddleware)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+app.add_middleware(TimeoutMiddleware, timeout=300)  # 5 minute timeout
 
 
 # Exception handlers

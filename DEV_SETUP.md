@@ -80,11 +80,17 @@ npm run dev
 
 ### Frontend Configuration (`frontend/.env`)
 
+The frontend uses Vite's built-in proxy configuration for API requests. No VITE_API_URL is needed as the frontend automatically proxies all requests to `/api/*` to the backend server running on `http://localhost:8000`.
+
 ```env
-VITE_API_URL=http://localhost:8000
+# WebSocket URL (optional, defaults to current host)
 VITE_WS_URL=ws://localhost:8000
+
+# Enable React DevTools in development
 VITE_ENABLE_DEVTOOLS=true
 ```
+
+**Note:** The frontend makes relative API calls (e.g., `/api/training/start`) which are automatically proxied by Vite during development. This simplifies the setup and eliminates CORS configuration issues.
 
 ### Backend Configuration (`.env`)
 

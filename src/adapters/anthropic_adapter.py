@@ -1,5 +1,6 @@
 """Anthropic Claude adapter implementation."""
 
+import re
 import time
 import json
 from typing import List, Dict, Any, Optional
@@ -331,7 +332,3 @@ Important guidelines:
             "model": self.model,
             "model_family": "claude"
         }
-
-
-# Import regex at module level
-import re

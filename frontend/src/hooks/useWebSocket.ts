@@ -52,9 +52,8 @@ export function useWebSocket(sessionId: string | null, options: UseWebSocketOpti
     }
 
     // Construct WebSocket URL with API key as query parameter
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsHost = import.meta.env.VITE_WS_URL || `${wsProtocol}//${window.location.host}`
-    const wsUrl = `${wsHost}/ws/training/${sessionId}?api_key=${apiKey}`
+    // Use relative path to leverage Vite's proxy configuration
+    const wsUrl = `/ws/training/${sessionId}?api_key=${apiKey}`
 
     try {
       const ws = new WebSocket(wsUrl)

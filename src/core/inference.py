@@ -240,9 +240,19 @@ class PrincipleInferenceEngine:
                 if cache_key in self._dtw_distance_cache:
                     dist = self._dtw_distance_cache[cache_key]
                 else:
-                    # Calculate DTW distance
-                    dist = dtw.distance(sequences[i][1], sequences[j][1])
-                    self._dtw_distance_cache[cache_key] = dist
+                    # Calculate DTW distance with error handling
+                    try:
+                        dist = dtw.distance(sequences[i][1], sequences[j][1])
+                        self._dtw_distance_cache[cache_key] = dist
+                    except Exception as e:
+                        logger.warning(
+                            "DTW calculation failed",
+                            error=str(e),
+                            sequence_i=i,
+                            sequence_j=j
+                        )
+                        # Use maximum distance as fallback to indicate dissimilarity
+                        dist = float('inf')
                 
                 distance_matrix[i, j] = dist
                 distance_matrix[j, i] = dist

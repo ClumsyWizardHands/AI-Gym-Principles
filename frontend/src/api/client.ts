@@ -17,7 +17,7 @@ export interface ApiResponse<T = any> {
 // Create axios instance
 const createApiClient = (): AxiosInstance => {
   const client = axios.create({
-    baseURL: '/api',
+    baseURL: '',  // Empty baseURL since endpoints already include /api
     timeout: 30000,
     headers: {
       'Content-Type': 'application/json',
